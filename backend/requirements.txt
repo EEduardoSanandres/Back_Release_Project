@@ -1,0 +1,8 @@
+fastapi
+fastapi-crudrouter
+uvicorn[standard]
+motor
+pydantic
+python-jose
+python-dotenv
+pydantic[email]
