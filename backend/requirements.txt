@@ -6,3 +6,5 @@ pydantic
 python-jose
 python-dotenv
 pydantic[email]
+lmstudio
+openai
