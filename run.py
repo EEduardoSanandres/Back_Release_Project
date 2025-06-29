@@ -1,9 +1,18 @@
 # run.py (o tu entrypoint)
 import logging
 import uvicorn
+import subprocess
+import sys
+
 from backend.app.database import app
 
-print("🚀 run.py arrancado")
+try:
+    # Actualiza pip
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
+    # Instala requisitos del proyecto
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "backend/requirements.txt"]);
+except subprocess.CalledProcessError as e:
+    print(f"⚠️ Error instalando dependencias: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
