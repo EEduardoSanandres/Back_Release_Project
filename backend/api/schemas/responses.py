@@ -41,3 +41,12 @@ class ReleaseOut(BaseModel):
 class PdfImportOut(BaseModel):
     project_id: str
     historias: list[PdfStoryOut]
+
+class StoryDiffOut(BaseModel):
+    id: str
+    nombre_before: str | None = None
+    nombre_after:  str | None = None
+    descripcion_before: str | None = None
+    descripcion_after:  str | None = None
+    criterios_before:   list[str] | None = None
+    criterios_after:    list[str] | None = None

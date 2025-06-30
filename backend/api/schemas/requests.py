@@ -32,3 +32,7 @@ class ReleaseIn(BaseModel):
     capacity_pts: int | None = None
     push_to_jira: bool = False
     format: Literal["pretty", "raw"] = "pretty"
+
+class ImproveByProjectIn(BaseModel):
+    project_id: str
+    story_ids: list[str] | None = None 

@@ -24,6 +24,8 @@ from backend.api.services.story_service import StoryService
 from backend.api.services.graph_service import GraphService
 from backend.api.services.release_service import ReleaseService
 from backend.api.schemas.responses import PdfImportOut
+from backend.api.schemas.requests  import ImproveByProjectIn
+from backend.api.schemas.responses import StoryDiffOut
 
 # router CRUD ya generado
 from backend.api.routers.crud import router as crud_router
@@ -67,6 +69,12 @@ async def improve(
 ):
     return await svc.refine_stories(body)
 
+@router.post("/stories/improve-by-project", response_model=list[StoryDiffOut])
+async def improve_by_project(
+    body: ImproveByProjectIn,
+    svc: StoryService = Depends(),
+):
+    return await svc.improve_by_project(body)
 
 # 3 ───────────────────── Generar grafo de dependencias ──────────────────── #
 
@@ -97,3 +105,4 @@ api_router.include_router(crud_router)   # CRUD de Mongo
 api_router.include_router(router)        # chat + pdf + graph + release
 
 __all__ = ["api_router"]  # se importa desde backend/app/database.py
+
