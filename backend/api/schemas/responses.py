@@ -37,3 +37,7 @@ class ReleaseOut(BaseModel):
     capacity_pts: int
     items: List[ReleaseItemOut]
     generated_at: datetime
+
+class PdfImportOut(BaseModel):
+    project_id: str
+    historias: list[PdfStoryOut]

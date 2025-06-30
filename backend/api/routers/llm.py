@@ -23,6 +23,7 @@ from backend.api.services.pdf_service import PdfService
 from backend.api.services.story_service import StoryService
 from backend.api.services.graph_service import GraphService
 from backend.api.services.release_service import ReleaseService
+from backend.api.schemas.responses import PdfImportOut
 
 # router CRUD ya generado
 from backend.api.routers.crud import router as crud_router
@@ -48,18 +49,15 @@ async def chat(req: ChatIn):
 
 # 1 ─────────────── PDF → borrador de historias de usuario ──────────────── #
 
-@router.post("/pdf/to-userstories", response_model=list[PdfStoryOut])
+@router.post("/pdf/to-userstories", response_model=PdfImportOut)
 async def pdf_to_stories(
     pdf_file: UploadFile | None = File(default=None),
     pdf_url : HttpUrl     | None = None,
     pdf_b64: str          | None = None,
     svc: PdfService = Depends(),
 ):
-    return await svc.extract_stories(
-        pdf_file=pdf_file,
-        pdf_url=pdf_url,
-        pdf_b64=pdf_b64,
-    )
+    return await svc.extract_stories(pdf_file=pdf_file, pdf_url=pdf_url, pdf_b64=pdf_b64)
+
 # 2 ─────────────────── Refinar historias existentes ────────────────────── #
 
 @router.post("/stories/improve", response_model=list[StoryOut])

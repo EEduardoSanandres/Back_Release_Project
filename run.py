@@ -16,6 +16,7 @@ except subprocess.CalledProcessError as e:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    print(app.docs_url)
     uvicorn.run(
         "backend.app.database:app",   # la ruta a tu FastAPI
         host="127.0.0.1",
