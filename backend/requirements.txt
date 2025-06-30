@@ -8,3 +8,6 @@ python-dotenv
 pydantic[email]
 lmstudio
 openai
+networkx>=3.2
+pypdf>=3.9
+python-multipart

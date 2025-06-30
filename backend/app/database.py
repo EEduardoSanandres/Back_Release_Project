@@ -39,8 +39,8 @@ async def startup():
 def shutdown():
     mongo_client.close()
 
-from .routers import api_router
-app.include_router(api_router, prefix="/api")
+from backend.api.routers.llm import api_router as main_router
+app.include_router(main_router, prefix="/api")
 
 @app.get("/ping", tags=["utils"])
 async def ping():
