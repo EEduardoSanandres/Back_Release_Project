@@ -4,7 +4,7 @@ import uvicorn
 import subprocess
 import sys
 
-from backend.app.database import app
+from backend.app import app
 
 try:
     # Actualiza pip
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     print(app.docs_url)
     uvicorn.run(
-        "backend.app.database:app",   # la ruta a tu FastAPI
+        "backend.app:app",   # la ruta a tu FastAPI
         host="127.0.0.1",
         port=8000,
         reload=True

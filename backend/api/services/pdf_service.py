@@ -1,42 +1,56 @@
-"""
-PDF → Historias + proyecto   (usa LM Studio vía API OpenAI-compatible)
-
-• Crea un registro en `projects` por cada PDF subido.
-• Devuelve project_id + historias (campos españoles).
-• Inserta las HU en `user_stories` mapeando descripcion → role/action/benefit.
-"""
-
+# ───── Imports y Configuración (sin cambios) ─────────────────────────────
 from __future__ import annotations
-import base64, io, re
+import base64, io, json, logging, os, anyio
 from datetime import datetime
 from typing import List
 
+import google.generativeai as genai
 import httpx
 from fastapi import UploadFile, HTTPException
 from pydantic import HttpUrl
 from pypdf import PdfReader, errors as pdf_errors
-from openai import OpenAI
 from bson import ObjectId
+from pymongo.errors import BulkWriteError
 
 from backend.api.schemas.responses import PdfStoryOut, PdfImportOut
-from backend.app.database import db
+from backend.app.db import db
 
-# ───── Configuración LM Studio ──────────────────────────────────────────
-_oai = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
-MODEL = "mistral-7b-instruct-v0.3"
-CHARS = 6_000  # ≈1 500 tokens
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+MODEL  = "gemini-1.5-pro-latest" # Actualizado a un modelo más reciente y capaz
+CHARS  = 15_000 # Los modelos más nuevos soportan contextos más grandes
 
-PROMPT = (
-    "Eres un analista ágil.\n"
-    "Del texto devuelve SÓLO las historias en JSON, una por línea, con claves "
-    "{epic, us, nombre, criterios, descripcion}.\n"
-)
+PROMPT = """
+Eres un extractor experto de Historias de Usuario (HU).
+Analiza el texto suministrado y genera EXCLUSIVAMENTE el bloque comprendido entre
+BEGIN_JSON y END_JSON (no incluyas ni BEGIN_JSON ni END_JSON en la respuesta),
+sin explicaciones adicionales.
 
-OBJ_RGX   = re.compile(r"\{.*?\}", re.S)
-DESC_RGX  = re.compile(
-    r"Como\s+(?P<role>.+?)\s+quiero\s+(?P<action>.+?)\s+para\s+(?P<benefit>.+)",
-    re.I
-)
+↳ Formato (JSON por línea):
+{
+  "epic"       : "<código o título de la épica>",
+  "us"         : "<código de la historia, ej. '001' o 'us-045'>",
+  "nombre"     : "<nombre breve de la HU>",
+  "descripcion": "<frase 'Como … quiero … para …'>",
+  "criterios"  : ["<Criterio 1>", "<Criterio 2>", …]
+}
+
+Reglas estrictas
+1. Devuelve UNA línea JSON por historia.
+2. Usa exactamente las claves indicadas, en español, en ese orden.
+3. Todos los valores son strings, excepto "criterios", que es un array de strings.
+4. Sin saltos de línea dentro de un valor.
+5. No incluyas comentarios ni caracteres fuera del bloque JSON.
+6. Si no tienes criterios, devuelve "criterios": []
+7. No uses retornos de carro ni tabulaciones: cada historia en **una sola línea**.
+8. La salida debe ser JSON válido según RFC 8259.
+
+Ejemplo
+BEGIN_JSON
+{"epic":"001","us":"001","nombre":"Búsqueda por palabra clave","descripcion":"Como Comprador quiero buscar productos por palabra clave para encontrar rápidamente lo que necesito.","criterios":["La búsqueda devuelve solo coincidencias de título o descripción.","La respuesta tarda < 30 ms.","Mensaje \"No se encontraron productos\" si no hay coincidencias."]}
+END_JSON
+
+El texto a analizar es:
+"""
 
 # ───── Servicio ──────────────────────────────────────────────────────────
 class PdfService:
@@ -45,87 +59,145 @@ class PdfService:
         *,
         pdf_file: UploadFile | None,
         pdf_url:  HttpUrl     | None,
-        pdf_b64:  str        | None,
+        pdf_b64:  str         | None,
     ) -> PdfImportOut:
-        # 1 leer PDF → texto
+        # 1) Leer PDF → texto
         pdf_bytes = await self._read(pdf_file, pdf_url, pdf_b64)
         plain     = self._pdf_to_text(pdf_bytes)
 
-        # 2 nuevo proyecto
+        # 2) Crear proyecto
         project_id = await self._create_project(self._filename(pdf_file, pdf_url))
 
-        # 3 Generar historias
+        # 3) Generar historias
         historias: list[PdfStoryOut] = []
         for chunk in self._chunks(plain):
-            raw  = await self._chat(chunk)
+            # Si _chat devuelve una cadena vacía, _parse_objs devolverá []
+            # y el bucle continuará con el siguiente chunk sin fallar.
+            raw = await self._chat(chunk)
             historias.extend(self._parse_objs(raw))
 
-        # 4 Persistir HU
-        if historias:
-            await db.user_stories.insert_many(
-                [
-                    {
-                        "project_id": project_id,
-                        **self._desc_to_rab(h.descripcion),
-                        "acceptance": [{"text": c} for c in h.criterios],
-                        "status": "new",
-                        "created_at": datetime.utcnow(),
-                    }
-                    for h in historias
-                ]
+        # 4) Eliminar códigos duplicados (en BD y dentro del lote)
+        existing_codes = {
+            d["code"]
+            async for d in db.user_stories.find(
+                {"project_id": project_id}, {"code": 1, "_id": 0}
             )
+        }
+        docs, seen = [], set(existing_codes)
+        for h in historias:
+            if h.us in seen:
+                continue
+            seen.add(h.us)
+            docs.append(
+                {
+                    "project_id":  project_id,
+                    "epica":       h.epic,
+                    "nombre":      h.nombre,
+                    "descripcion": h.descripcion,
+                    "criterios":   h.criterios,
+                    "code":        h.us,
+                    "created_at":  datetime.utcnow(),
+                }
+            )
+
+        # 5) Insertar lote (sin detenerse por otros duplicados inesperados)
+        if docs:
+            try:
+                await db.user_stories.insert_many(docs, ordered=False)
+            except BulkWriteError:
+                pass
 
         return PdfImportOut(project_id=str(project_id), historias=historias)
 
     # ───────── helpers principales ─────────
     async def _chat(self, chunk: str) -> str:
-        r = _oai.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": PROMPT + chunk}],
-            temperature=0.2,
-        )
-        return r.choices[0].message.content
+        """
+        Llama al modelo Gemini en un hilo aparte para no bloquear el event-loop.
+        Ahora es tolerante a fallos: si Gemini no devuelve contenido,
+        retorna una cadena vacía en lugar de lanzar una excepción.
+        """
+        model = genai.GenerativeModel(MODEL)
+
+        def _generate():
+            try:
+                resp = model.generate_content(
+                    PROMPT + chunk,
+                    generation_config={
+                        "temperature": 0.2, # Un poco más determinista para JSON
+                        "max_output_tokens": 8192,
+                    },
+                    # Añadimos configuración de seguridad para ser menos restrictivos
+                    # ¡CUIDADO! Esto puede permitir contenido inapropiado. Ajústalo según tus necesidades.
+                    safety_settings={
+                        'HARM_CATEGORY_HARASSMENT': 'BLOCK_NONE',
+                        'HARM_CATEGORY_HATE_SPEECH': 'BLOCK_NONE',
+                        'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'BLOCK_NONE',
+                        'HARM_CATEGORY_DANGEROUS_CONTENT': 'BLOCK_NONE',
+                    }
+                )
+                # La propiedad .text lanza un ValueError si el contenido fue bloqueado,
+                # por eso la encapsulamos en un try...except.
+                return resp.text
+            except ValueError:
+                # Si .text falla, es probable que la respuesta haya sido bloqueada por seguridad.
+                # Lo registramos como una advertencia y devolvemos una cadena vacía.
+                finish_reason = "DESCONOCIDA"
+                # Intentamos obtener la razón de finalización para depuración.
+                if resp.candidates and resp.candidates[0].finish_reason:
+                    finish_reason = resp.candidates[0].finish_reason.name
+
+                logging.warning(
+                    "Gemini no devolvió contenido para un chunk. "
+                    f"Razón de finalización probable: {finish_reason}"
+                )
+                return "" # Devolver una cadena vacía para no detener el proceso
+            except Exception as e:
+                # Capturar cualquier otro error inesperado de la API
+                logging.error(f"Error inesperado al llamar a la API de Gemini: {e}")
+                return ""
+
+
+        return await anyio.to_thread.run_sync(_generate)
 
     def _parse_objs(self, raw: str) -> List[PdfStoryOut]:
-        out = []
-        for js in OBJ_RGX.findall(raw):
-            try:
-                out.append(PdfStoryOut.model_validate_json(js))
-            except Exception:
-                continue
-        return out
-
-    def _desc_to_rab(self, desc: str) -> dict[str, str]:
         """
-        Convierte 'Como X quiero Y para Z' → role/action/benefit
-        Devuelve diccionario listo para Mongo.
+        Lee línea a línea el bloque devuelto por el LLM y valida solo
+        las que sean JSON completo.  Descarta silenciosamente líneas inválidas.
         """
-        m = DESC_RGX.search(desc.replace("\n", " "))
-        if not m:
-            return {"role": "", "action": "", "benefit": desc}
-        return {
-            "role": m["role"].strip(),
-            "action": m["action"].strip(),
-            "benefit": m["benefit"].strip().rstrip("."),
-        }
+        historias: list[PdfStoryOut] = []
+        if not raw: # Si la entrada es vacía, no hay nada que hacer.
+            return historias
 
-    # ───────── creación de proyecto ─────────
+        for line in raw.splitlines():
+            line = line.strip()
+            # Una comprobación más flexible para JSON que pudiera estar indentado
+            if line.startswith("{") and line.endswith("}"):
+                try:
+                    data = json.loads(line)
+                    # Aseguramos que la clave "criterios" siempre exista
+                    if "criterios" not in data:
+                        data["criterios"] = []
+                    historias.append(PdfStoryOut(**data))
+                except (json.JSONDecodeError, TypeError, KeyError) as err:
+                    logging.warning(f"Línea JSON descartada por error de parseo: {err} | Línea: '{line}'")
+        return historias
+
+    # ───────── creación de proyecto (sin cambios) ─────────
     async def _create_project(self, name: str) -> ObjectId:
         last = await db.projects.find_one(sort=[("created_at", -1)])
         seq  = int(last["code"].split("-")[1]) + 1 if last else 1
-        code = f"PROJ-{seq:03d}"
         res = await db.projects.insert_one(
             {
-                "code": code,
-                "name": name,
+                "code":        f"PROJ-{seq:03d}",
+                "name":        name,
                 "description": "",
-                "owner_id": None,
-                "created_at": datetime.utcnow(),
+                "owner_id":    None,
+                "created_at":  datetime.utcnow(),
             }
         )
         return res.inserted_id
 
-    # ───────── utilidades PDF y troceo ──────
+    # ───────── utilidades PDF y troceo (sin cambios) ──────
     async def _read(self, f, url, b64) -> bytes:
         if f:
             data = await f.read()
@@ -148,6 +220,7 @@ class PdfService:
         return "\n".join(p.extract_text() or "" for p in reader.pages)
 
     def _chunks(self, text: str, size: int = CHARS):
+        """Divide sin solape para minimizar repeticiones."""
         return [text[i : i + size] for i in range(0, len(text), size)]
 
     @staticmethod

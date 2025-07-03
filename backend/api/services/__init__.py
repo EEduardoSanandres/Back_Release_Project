@@ -1,9 +1,9 @@
-from .pdf_service import PdfService
-from .story_service import StoryService
-from .graph_service import GraphService
-from .release_service import ReleaseService
+# backend/api/services/__init__.py
 
-def pdf_service()    -> PdfService:    return PdfService()
-def story_service()  -> StoryService:  return StoryService()
-def graph_service()  -> GraphService:  return GraphService()
-def release_service()-> ReleaseService:return ReleaseService()
+from .pdf_service import PdfService
+
+def pdf_service() -> PdfService:
+    """Factory para inyectar PdfService con Depends()."""
+    return PdfService()
+
+__all__ = ["pdf_service", "PdfService"]
