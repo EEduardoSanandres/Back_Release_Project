@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Annotated, Optional, Literal
+from typing import Annotated, Optional, Literal, List
 from bson import ObjectId
-from pydantic import Field, EmailStr
+from pydantic import Field, EmailStr, BaseModel
 from fastapi_crudrouter_mongodb import MongoModel, MongoObjectId
 
 class User(MongoModel):
@@ -26,8 +26,11 @@ class UserStory(MongoModel):
     epic: str
     description: str
 
-class Dependency(MongoModel):
-    id: Annotated[ObjectId, MongoObjectId] | None = Field(default=None, alias="_id")
-    project_id: Annotated[ObjectId, MongoObjectId]
-    user_story_id: Annotated[ObjectId, MongoObjectId]
-    depends_on_id: Annotated[ObjectId, MongoObjectId]
+class DependencyPair(BaseModel):
+    frm: str
+    to: List[str]
+
+class DependencyGraph(MongoModel):
+    id         : Annotated[ObjectId, MongoObjectId] | None = Field(default=None, alias="_id")
+    project_id : Annotated[ObjectId, MongoObjectId]
+    pairs      : list[DependencyPair]

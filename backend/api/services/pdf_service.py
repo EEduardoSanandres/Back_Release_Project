@@ -16,8 +16,8 @@ from backend.api.schemas.responses import PdfStoryOut, PdfImportOut
 from backend.app.db import db
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL  = "gemini-1.5-pro-latest" # Actualizado a un modelo más reciente y capaz
-CHARS  = 15_000 # Los modelos más nuevos soportan contextos más grandes
+MODEL  = "gemini-1.5-pro"
+CHARS  = 15_000
 
 PROMPT = """
 Eres un extractor experto de Historias de Usuario (HU).
