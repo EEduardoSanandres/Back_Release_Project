@@ -15,8 +15,8 @@ import google.generativeai as genai
 from fastapi import HTTPException
 from bson import ObjectId
 
-from backend.app.db import db
-from backend.app.schemas import DependencyPair, DependencyGraph
+from ...app.db import db
+from ...app.schemas import DependencyPair, DependencyGraph
 
 # ────────────────────────── Configuración Gemini ──────────────────────────
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))

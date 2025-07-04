@@ -1,7 +1,7 @@
 # backend/api/schemas/responses.py
 from datetime import date, datetime
-from typing import List
-from pydantic import BaseModel
+from typing import List, Literal
+from pydantic import BaseModel, EmailStr
 
 class PdfStoryOut(BaseModel):
     epic: str
@@ -13,3 +13,11 @@ class PdfStoryOut(BaseModel):
 class PdfImportOut(BaseModel):
     project_id: str
     historias: list[PdfStoryOut]
+
+class UserOut(BaseModel):
+    """Respuesta de usuario sin datos sensibles como la contraseña."""
+    id: str
+    email: EmailStr
+    name: str
+    role: Literal["student", "advisor", "po", "admin"]
+    created_at: datetime

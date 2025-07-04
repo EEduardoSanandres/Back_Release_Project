@@ -12,8 +12,8 @@ from pypdf import PdfReader, errors as pdf_errors
 from bson import ObjectId
 from pymongo.errors import BulkWriteError
 
-from backend.api.schemas.responses import PdfStoryOut, PdfImportOut
-from backend.app.db import db
+from ..schemas.responses import PdfStoryOut, PdfImportOut
+from ...app.db import db
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 MODEL  = "gemini-1.5-pro"
@@ -60,13 +60,14 @@ class PdfService:
         pdf_file: UploadFile | None,
         pdf_url:  HttpUrl     | None,
         pdf_b64:  str         | None,
+        user_id:  str         | None = None,
     ) -> PdfImportOut:
         # 1) Leer PDF → texto
         pdf_bytes = await self._read(pdf_file, pdf_url, pdf_b64)
         plain     = self._pdf_to_text(pdf_bytes)
 
         # 2) Crear proyecto
-        project_id = await self._create_project(self._filename(pdf_file, pdf_url))
+        project_id = await self._create_project(self._filename(pdf_file, pdf_url), user_id)
 
         # 3) Generar historias
         historias: list[PdfStoryOut] = []
@@ -182,16 +183,19 @@ class PdfService:
                     logging.warning(f"Línea JSON descartada por error de parseo: {err} | Línea: '{line}'")
         return historias
 
-    # ───────── creación de proyecto (sin cambios) ─────────
-    async def _create_project(self, name: str) -> ObjectId:
+    # ───────── creación de proyecto ─────────
+    async def _create_project(self, name: str, user_id: str | None = None) -> ObjectId:
         last = await db.projects.find_one(sort=[("created_at", -1)])
         seq  = int(last["code"].split("-")[1]) + 1 if last else 1
+        
+        owner_id = ObjectId(user_id) if user_id else None
+        
         res = await db.projects.insert_one(
             {
                 "code":        f"PROJ-{seq:03d}",
                 "name":        name,
                 "description": "",
-                "owner_id":    None,
+                "owner_id":    owner_id,
                 "created_at":  datetime.utcnow(),
             }
         )

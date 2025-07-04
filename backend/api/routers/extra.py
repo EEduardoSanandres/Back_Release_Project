@@ -3,9 +3,9 @@ from fastapi import APIRouter, HTTPException, Body, status
 from bson import ObjectId
 from typing import List
 
-from backend.app.db import db
-from backend.app.schemas import User, Project, UserStory, DependencyGraph
-from backend.api.services.dependency_service import DependencyService
+from ...app.db import db
+from ...app.schemas import User, Project, UserStory, DependencyGraph
+from ..services.dependency_service import DependencyService
 
 router = APIRouter(tags=["Extra utils"])
 
@@ -37,8 +37,17 @@ async def search_projects(q: str):
 # ─────────────────────────── USER STORIES ─────────────────────────────
 @router.get("/projects/{project_id}/stories", response_model=list[UserStory])
 async def stories_of_project(project_id: str):
-    oid = ObjectId(project_id)
-    return await db.user_stories.find({"project_id": oid}).to_list(None)
+    try:
+        oid = ObjectId(project_id)
+        stories = await db.user_stories.find({"project_id": oid}).to_list(None)
+        return stories
+    except Exception as e:
+        import logging
+        logging.error(f"Error getting stories for project {project_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error retrieving stories: {str(e)}"
+        )
 
 @router.post(
     "/projects/{project_id}/stories/bulk",
@@ -78,3 +87,62 @@ async def get_dependency_graph(project_id: str):
 async def generate_dependency_graph(project_id: str):
     svc = DependencyService()
     return await svc.build_graph(project_id)
+
+# ─────────────────────── DIAGNOSTIC ENDPOINTS ──────────────────────
+@router.get("/diagnostic/db-status")
+async def check_db_status():
+    """Check database connectivity and basic stats."""
+    try:
+        # Test database connection
+        server_info = await db.client.server_info()
+        
+        # Count documents in collections
+        counts = {}
+        for collection_name in ["users", "projects", "user_stories", "dependencies_graph"]:
+            try:
+                count = await db[collection_name].count_documents({})
+                counts[collection_name] = count
+            except Exception as e:
+                counts[collection_name] = f"Error: {str(e)}"
+        
+        return {
+            "status": "connected",
+            "server_info": {
+                "version": server_info.get("version", "unknown"),
+                "ok": server_info.get("ok", False)
+            },
+            "collection_counts": counts
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database connection error: {str(e)}"
+        )
+
+@router.get("/diagnostic/test-project/{project_id}")
+async def test_project_stories(project_id: str):
+    """Test if a specific project exists and has stories."""
+    try:
+        oid = ObjectId(project_id)
+        
+        # Check if project exists
+        project = await db.projects.find_one({"_id": oid})
+        
+        # Count stories for this project
+        story_count = await db.user_stories.count_documents({"project_id": oid})
+        
+        # Get sample stories
+        sample_stories = await db.user_stories.find({"project_id": oid}).limit(3).to_list(None)
+        
+        return {
+            "project_id": project_id,
+            "project_exists": project is not None,
+            "project_data": project,
+            "story_count": story_count,
+            "sample_stories": sample_stories
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error checking project: {str(e)}"
+        )
