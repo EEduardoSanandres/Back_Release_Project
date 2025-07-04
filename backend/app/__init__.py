@@ -1,11 +1,13 @@
 import logging
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pymongo import ASCENDING
 
-from backend.app.db import db, mongo_client
-from backend.api.routers.llm  import api_router as main_router
-from backend.api.routers.crud import router     as crud_router
-from backend.api.routers.extra import router    as extra_router
+from .db import db, mongo_client
+from ..api.routers.llm  import api_router as main_router
+from ..api.routers.crud import router     as crud_router
+from ..api.routers.extra import router    as extra_router
+from ..api.routers.auth import router     as auth_router
 
 # ── Índices ────────────────────────────────────
 INDEX_MAP = {
@@ -25,6 +27,15 @@ async def init_indexes():
 # ── FastAPI ────────────────────────────────────
 app = FastAPI(docs_url="/docs", redoc_url=None)
 
+# ── CORS Configuration ─────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.on_event("startup")
 async def startup():
     await init_indexes()
@@ -37,3 +48,4 @@ def shutdown():
 app.include_router(main_router, prefix="/api")
 app.include_router(crud_router,  prefix="/api")
 app.include_router(extra_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
