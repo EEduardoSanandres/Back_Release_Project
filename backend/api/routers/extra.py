@@ -1,11 +1,13 @@
 from __future__ import annotations
-from fastapi import APIRouter, HTTPException, Body, status
+from fastapi import APIRouter, HTTPException, Body, status, Depends
 from bson import ObjectId
 from typing import List
 
 from ...app.db import db
 from ...app.schemas import User, Project, UserStory, DependencyGraph
 from ..services.dependency_service import DependencyService
+from ..services.release_backlog_service import ReleaseBacklogService
+from ..schemas.responses import ReleaseBacklogOut
 
 router = APIRouter(tags=["Extra utils"])
 
@@ -146,3 +148,24 @@ async def test_project_stories(project_id: str):
             status_code=500,
             detail=f"Error checking project: {str(e)}"
         )
+
+@router.post("/{project_id}/release-backlog/generate", response_model=ReleaseBacklogOut, status_code=status.HTTP_201_CREATED)
+async def generate_project_release_backlog(
+    project_id: str,
+    service: ReleaseBacklogService = Depends()
+):
+    """
+    Genera (o regenera) el Release Backlog ordenado para un proyecto
+    basándose en sus Historias de Usuario y dependencias.
+    """
+    return await service.generate_backlog(project_id)
+
+@router.get("/{project_id}/release-backlog", response_model=ReleaseBacklogOut)
+async def get_project_release_backlog(
+    project_id: str,
+    service: ReleaseBacklogService = Depends()
+):
+    """
+    Obtiene el Release Backlog existente para un proyecto.
+    """
+    return await service.get_backlog(project_id)

@@ -24,3 +24,12 @@ class UserOut(BaseModel):
     name: str
     role: Literal["student", "advisor", "po", "admin"]
     created_at: datetime
+
+class ReleaseBacklogOut(BaseModel):
+    id: str
+    project_id: str
+    us_codes: List[str]
+    generated_at: datetime
+    total_prompt_tokens: int
+    total_completion_tokens: int
+    total_processing_time_ms: float

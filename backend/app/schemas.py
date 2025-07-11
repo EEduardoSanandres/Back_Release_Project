@@ -41,3 +41,15 @@ class DependencyGraph(MongoModel):
     id         : Annotated[ObjectId, MongoObjectId] | None = Field(default=None, alias="_id")
     project_id : Annotated[ObjectId, MongoObjectId]
     pairs      : list[DependencyPair]
+    total_prompt_tokens: int = Field(default=0)
+    total_completion_tokens: int = Field(default=0)
+    total_processing_time_ms: float = Field(default=0.0)
+
+class ReleaseBacklog(MongoModel):
+    id: Annotated[ObjectId, MongoObjectId] | None = Field(default=None, alias="_id")
+    project_id: Annotated[ObjectId, MongoObjectId]
+    us_codes: List[str] = Field(description="Lista ordenada de códigos de HU para el release.")
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    total_prompt_tokens: int = Field(default=0)
+    total_completion_tokens: int = Field(default=0)
+    total_processing_time_ms: float = Field(default=0.0)
