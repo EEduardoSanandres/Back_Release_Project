@@ -1,7 +1,7 @@
-# ───── Imports y Configuración (sin cambios) ─────────────────────────────
 from __future__ import annotations
 import base64, io, json, logging, os, anyio
 from datetime import datetime
+import time # Importar el módulo time
 from typing import List
 
 import google.generativeai as genai
@@ -16,8 +16,8 @@ from ..schemas.responses import PdfStoryOut, PdfImportOut
 from ...app.db import db
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL  = "gemini-1.5-pro"
-CHARS  = 15_000
+MODEL = "gemini-1.5-pro"
+CHARS = 15_000
 
 PROMPT = """
 Eres un extractor experto de Historias de Usuario (HU).
@@ -58,9 +58,9 @@ class PdfService:
         self,
         *,
         pdf_file: UploadFile | None,
-        pdf_url:  HttpUrl     | None,
-        pdf_b64:  str         | None,
-        user_id:  str         | None = None,
+        pdf_url:  HttpUrl    | None,
+        pdf_b64:  str        | None,
+        user_id:  str        | None = None,
     ) -> PdfImportOut:
         # 1) Leer PDF → texto
         pdf_bytes = await self._read(pdf_file, pdf_url, pdf_b64)
@@ -71,11 +71,18 @@ class PdfService:
 
         # 3) Generar historias
         historias: list[PdfStoryOut] = []
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        total_processing_time_ms = 0.0
+
         for chunk in self._chunks(plain):
             # Si _chat devuelve una cadena vacía, _parse_objs devolverá []
             # y el bucle continuará con el siguiente chunk sin fallar.
-            raw = await self._chat(chunk)
+            raw, prompt_t, completion_t, proc_t = await self._chat(chunk)
             historias.extend(self._parse_objs(raw))
+            total_prompt_tokens += prompt_t
+            total_completion_tokens += completion_t
+            total_processing_time_ms += proc_t
 
         # 4) Eliminar códigos duplicados (en BD y dentro del lote)
         existing_codes = {
@@ -107,28 +114,49 @@ class PdfService:
                 await db.user_stories.insert_many(docs, ordered=False)
             except BulkWriteError:
                 pass
+        
+        await db.projects.update_one(
+            {"_id": project_id},
+            {
+                "$set": {
+                    "total_prompt_tokens": total_prompt_tokens,
+                    "total_completion_tokens": total_completion_tokens,
+                    "total_processing_time_ms": total_processing_time_ms,
+                }
+            }
+        )
 
-        return PdfImportOut(project_id=str(project_id), historias=historias)
+        return PdfImportOut(
+            project_id=str(project_id),
+            historias=historias,
+            total_prompt_tokens=total_prompt_tokens,
+            total_completion_tokens=total_completion_tokens,
+            total_processing_time_ms=total_processing_time_ms,
+        )
 
     # ───────── helpers principales ─────────
-    async def _chat(self, chunk: str) -> str:
+    async def _chat(self, chunk: str) -> tuple[str, int, int, float]:
         """
         Llama al modelo Gemini en un hilo aparte para no bloquear el event-loop.
         Ahora es tolerante a fallos: si Gemini no devuelve contenido,
         retorna una cadena vacía en lugar de lanzar una excepción.
+        Retorna el contenido, prompt_tokens, completion_tokens y tiempo de procesamiento.
         """
         model = genai.GenerativeModel(MODEL)
+        prompt_tokens = 0
+        completion_tokens = 0
+        processing_time_ms = 0.0
 
         def _generate():
+            nonlocal prompt_tokens, completion_tokens, processing_time_ms
             try:
+                start_time = time.perf_counter() # Iniciar el contador de tiempo
                 resp = model.generate_content(
                     PROMPT + chunk,
                     generation_config={
                         "temperature": 0.2, # Un poco más determinista para JSON
                         "max_output_tokens": 8192,
                     },
-                    # Añadimos configuración de seguridad para ser menos restrictivos
-                    # ¡CUIDADO! Esto puede permitir contenido inapropiado. Ajústalo según tus necesidades.
                     safety_settings={
                         'HARM_CATEGORY_HARASSMENT': 'BLOCK_NONE',
                         'HARM_CATEGORY_HATE_SPEECH': 'BLOCK_NONE',
@@ -136,14 +164,15 @@ class PdfService:
                         'HARM_CATEGORY_DANGEROUS_CONTENT': 'BLOCK_NONE',
                     }
                 )
-                # La propiedad .text lanza un ValueError si el contenido fue bloqueado,
-                # por eso la encapsulamos en un try...except.
+                end_time = time.perf_counter() # Finalizar el contador de tiempo
+                processing_time_ms = (end_time - start_time) * 1000 # Convertir a milisegundos
+
+                if resp.usage_metadata:
+                    prompt_tokens = resp.usage_metadata.prompt_token_count
+                    completion_tokens = resp.usage_metadata.candidates_token_count
                 return resp.text
             except ValueError:
-                # Si .text falla, es probable que la respuesta haya sido bloqueada por seguridad.
-                # Lo registramos como una advertencia y devolvemos una cadena vacía.
                 finish_reason = "DESCONOCIDA"
-                # Intentamos obtener la razón de finalización para depuración.
                 if resp.candidates and resp.candidates[0].finish_reason:
                     finish_reason = resp.candidates[0].finish_reason.name
 
@@ -153,12 +182,12 @@ class PdfService:
                 )
                 return "" # Devolver una cadena vacía para no detener el proceso
             except Exception as e:
-                # Capturar cualquier otro error inesperado de la API
                 logging.error(f"Error inesperado al llamar a la API de Gemini: {e}")
                 return ""
 
 
-        return await anyio.to_thread.run_sync(_generate)
+        raw_text = await anyio.to_thread.run_sync(_generate)
+        return raw_text, prompt_tokens, completion_tokens, processing_time_ms
 
     def _parse_objs(self, raw: str) -> List[PdfStoryOut]:
         """
@@ -197,6 +226,9 @@ class PdfService:
                 "description": "",
                 "owner_id":    owner_id,
                 "created_at":  datetime.utcnow(),
+                "total_prompt_tokens": 0,
+                "total_completion_tokens": 0,
+                "total_processing_time_ms": 0.0,
             }
         )
         return res.inserted_id

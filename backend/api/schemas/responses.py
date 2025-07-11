@@ -13,6 +13,9 @@ class PdfStoryOut(BaseModel):
 class PdfImportOut(BaseModel):
     project_id: str
     historias: list[PdfStoryOut]
+    total_prompt_tokens: int
+    total_completion_tokens: int
+    total_processing_time_ms: float
 
 class UserOut(BaseModel):
     """Respuesta de usuario sin datos sensibles como la contraseña."""
