@@ -136,6 +136,16 @@ async def test_project_stories(project_id: str):
         # Get sample stories
         sample_stories = await db.user_stories.find({"project_id": oid}).limit(3).to_list(None)
         
+        # Convert ObjectId to strings for JSON serialization
+        if project:
+            project["_id"] = str(project["_id"])
+            if "owner_id" in project and project["owner_id"]:
+                project["owner_id"] = str(project["owner_id"])
+        
+        for story in sample_stories:
+            story["_id"] = str(story["_id"])
+            story["project_id"] = str(story["project_id"])
+        
         return {
             "project_id": project_id,
             "project_exists": project is not None,
@@ -149,7 +159,7 @@ async def test_project_stories(project_id: str):
             detail=f"Error checking project: {str(e)}"
         )
 
-@router.post("/{project_id}/release-backlog/generate", response_model=ReleaseBacklogOut, status_code=status.HTTP_201_CREATED)
+@router.post("/projects/{project_id}/release-backlog/generate", response_model=ReleaseBacklogOut, status_code=status.HTTP_201_CREATED)
 async def generate_project_release_backlog(
     project_id: str,
     service: ReleaseBacklogService = Depends()
@@ -160,7 +170,7 @@ async def generate_project_release_backlog(
     """
     return await service.generate_backlog(project_id)
 
-@router.get("/{project_id}/release-backlog", response_model=ReleaseBacklogOut)
+@router.get("/projects/{project_id}/release-backlog", response_model=ReleaseBacklogOut)
 async def get_project_release_backlog(
     project_id: str,
     service: ReleaseBacklogService = Depends()
