@@ -9,13 +9,8 @@ from ..services.pdf_service import PdfService
 # Esquema de respuesta: project_id + historias
 from ..schemas.responses import PdfImportOut
 
-
-# --------------------------------------------------------------------------- #
-#                                Router único                                 #
-# --------------------------------------------------------------------------- #
-
 router = APIRouter(
-    prefix="/pdf",          # 👉  /api/pdf/to-userstories
+    prefix="/pdf",
     tags=["pdf"],
 )
 
@@ -39,11 +34,6 @@ async def pdf_to_stories(
         pdf_b64=pdf_b64,
         user_id=user_id,
     )
-
-
-# --------------------------------------------------------------------------- #
-#            Router principal que se importa desde `backend/app`              #
-# --------------------------------------------------------------------------- #
 
 api_router = APIRouter()
 api_router.include_router(router)

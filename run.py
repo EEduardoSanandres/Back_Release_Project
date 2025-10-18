@@ -1,4 +1,3 @@
-# run.py (o tu entrypoint)
 import logging
 import uvicorn
 import subprocess
@@ -18,7 +17,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     print(app.docs_url)
     uvicorn.run(
-        "backend.app:app",   # la ruta a tu FastAPI
+        "backend.app:app",
         host="127.0.0.1",
         port=8000,
         reload=True

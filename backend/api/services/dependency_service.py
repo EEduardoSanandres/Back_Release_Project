@@ -9,7 +9,7 @@ Expuesto en:
 from __future__ import annotations
 
 import os, json, logging, anyio
-import time # Importar el módulo time
+import time
 from typing import List, Set, Tuple
 
 import google.generativeai as genai
@@ -21,7 +21,7 @@ from ...app.schemas import DependencyPair, DependencyGraph
 
 # ────────────────────────── Configuración Gemini ──────────────────────────
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = "gemini-1.5-pro"
+MODEL = "gemini-2.5-flash" # Probar con 2.5 pro
 
 DEPENDENCY_PROMPT = """
 Eres un analista experto en Historias de Usuario (HU).

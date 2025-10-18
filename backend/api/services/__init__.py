@@ -1,5 +1,3 @@
-# backend/api/services/__init__.py
-
 from .pdf_service import PdfService
 from .auth_service import AuthService, auth_service
 
