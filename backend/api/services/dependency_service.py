@@ -19,10 +19,8 @@ from bson import ObjectId
 from ...app.db import db
 from ...app.schemas import DependencyPair, DependencyGraph
 
-# ────────────────────────── Configuración Gemini ──────────────────────────
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = "gemini-2.5-flash" # Probar con 2.5 pro
-
+MODEL = "gemini-2.5-pro"
 DEPENDENCY_PROMPT = """
 Eres un analista experto en Historias de Usuario (HU).
 Recibirás una lista de HU (código - título). Devuelve ÚNICAMENTE líneas JSON
@@ -45,7 +43,6 @@ Ejemplo:
 Lista de HU:
 """
 
-# ───────────────────────────── Servicio IA ────────────────────────────────
 class DependencyService:
     """Construye (o reconstruye) el grafo de dependencias para un proyecto."""
 
@@ -113,7 +110,6 @@ class DependencyService:
                     completion_tokens = res.usage_metadata.candidates_token_count
                 return res.text
             except ValueError:
-                # Esto ocurre si Gemini bloquea el contenido
                 logging.warning("Gemini no devolvió contenido (bloqueado por seguridad).")
                 return ""
             except Exception as e:

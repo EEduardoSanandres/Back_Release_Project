@@ -1,8 +1,7 @@
 from __future__ import annotations
-import base64, io, json, logging, os, anyio
+import base64, io, json, logging, os, re, anyio, time
 from datetime import datetime
-import time # Importar el módulo time
-from typing import List
+from typing import List, Generator, Iterable, Optional, Tuple, Literal
 
 import google.generativeai as genai
 import httpx
@@ -10,14 +9,35 @@ from fastapi import UploadFile, HTTPException
 from pydantic import HttpUrl
 from pypdf import PdfReader, errors as pdf_errors
 from bson import ObjectId
-from pymongo.errors import BulkWriteError
+from pymongo.errors import BulkWriteError, DuplicateKeyError  # ⬅️ añadido
 
-from ..schemas.responses import PdfStoryOut, PdfImportOut
-from ...app.db import db
+# ───────── Stubs si no carga el paquete del proyecto ─────────
+try:
+    from ..schemas.responses import PdfStoryOut, PdfImportOut
+    from ...app.db import db
+except (ImportError, ValueError):
+    logging.warning("No se pudieron resolver las importaciones relativas. Usando stubs.")
+    from pydantic import BaseModel
+    class PdfStoryOut(BaseModel):
+        epic: str; us: str; nombre: str; descripcion: str; criterios: List[str]
+    class PdfImportOut(BaseModel):
+        project_id: str; historias: List[PdfStoryOut]
+        total_prompt_tokens: int; total_completion_tokens: int; total_processing_time_ms: float
+    class MockCollection:
+        async def find(self, *a, **k): return []
+        async def find_one(self, *a, **k): return None
+        async def insert_one(self, *a, **k):
+            class R: inserted_id = ObjectId()
+            return R()
+        async def insert_many(self, *a, **k): pass
+        async def update_one(self, *a, **k): pass
+    class MockDb: user_stories = MockCollection(); projects = MockCollection()
+    db = MockDb()
 
+# ───────── LLM config ─────────
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = "gemini-2.5-flash" # Probar con 2.5 pro
-CHARS = 15_000
+MODEL = "gemini-2.5-pro"
+CHARS = 18_000
 
 PROMPT = """
 Eres un extractor experto de Historias de Usuario (HU).
@@ -52,7 +72,6 @@ END_JSON
 El texto a analizar es:
 """
 
-# ───── Servicio ──────────────────────────────────────────────────────────
 class PdfService:
     async def extract_stories(
         self,
@@ -61,69 +80,125 @@ class PdfService:
         pdf_url:  HttpUrl    | None,
         pdf_b64:  str        | None,
         user_id:  str        | None = None,
+        dedupe_mode: Literal["none","project","global"] = None,
+        force_llm: bool | None = None,
     ) -> PdfImportOut:
-        # 1) Leer PDF → texto
-        pdf_bytes = await self._read(pdf_file, pdf_url, pdf_b64)
-        plain     = self._pdf_to_text(pdf_bytes)
+        """
+        dedupe_mode:
+          - "project" (default): dedup solo dentro del proyecto actual → permite reimportar el mismo PDF en proyectos nuevos.
+          - "none": no deduplica (inserta todo tal cual).
+          - "global": dedup por code en toda la colección (no recomendado si quieres reprocesar).
+        force_llm:
+          - True: ignora parser determinista y llama LLM (útil para pruebas).
+        También puedes controlar por env:
+          EXTRACT_DEDUPE_MODE = none|project|global
+          EXTRACT_FORCE_LLM   = 1|0
+        """
+        dedupe_mode = dedupe_mode or os.getenv("EXTRACT_DEDUPE_MODE", "project")
+        force_llm = bool(int(os.getenv("EXTRACT_FORCE_LLM", "0"))) if force_llm is None else force_llm
 
-        # 2) Crear proyecto
+        # 1) PDF → texto
+        pdf_bytes = await self._read(pdf_file, pdf_url, pdf_b64)
+        raw_text  = self._pdf_to_text(pdf_bytes)
+        text      = self._normalize_text(raw_text)
+
+        # 2) Proyecto
         project_id = await self._create_project(self._filename(pdf_file, pdf_url), user_id)
 
-        # 3) Generar historias
         historias: list[PdfStoryOut] = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
         total_processing_time_ms = 0.0
 
-        for chunk in self._chunks(plain):
-            # Si _chat devuelve una cadena vacía, _parse_objs devolverá []
-            # y el bucle continuará con el siguiente chunk sin fallar.
-            raw, prompt_t, completion_t, proc_t = await self._chat(chunk)
-            historias.extend(self._parse_objs(raw))
-            total_prompt_tokens += prompt_t
-            total_completion_tokens += completion_t
-            total_processing_time_ms += proc_t
+        # 3) Extracción
+        if not force_llm:
+            parsed = self._extract_structured_stories(text)
+            historias.extend(parsed)
+            logging.info(f"[extract] Parser determinista → {len(parsed)} HU")
+        else:
+            logging.info("[extract] FORCE_LLM=1 → saltando parser determinista")
 
-        # 4) Eliminar códigos duplicados (en BD y dentro del lote)
-        existing_codes = {
-            d["code"]
-            async for d in db.user_stories.find(
-                {"project_id": project_id}, {"code": 1, "_id": 0}
-            )
-        }
-        docs, seen = [], set(existing_codes)
+        # Bloques detectados (aunque no tengan criterios) para LLM por bloque
+        all_blocks = list(self._iter_story_blocks(text, allow_without_criterios=True))
+
+        # Fallbacks LLM
+        need_block_llm = force_llm or (all_blocks and len(historias) < len(all_blocks))
+        need_chunk_llm = force_llm or (not all_blocks and not historias)
+
+        if need_block_llm and all_blocks:
+            parsed_us = {h.us for h in historias}
+            pending = [(e,u,n,b) for (e,u,n,b) in all_blocks if u not in parsed_us]
+            logging.info(f"[extract] LLM por bloque → {len(pending)} pendientes")
+            for epic, us, name, block in pending:
+                raw, pt, ct, proc = await self._chat(self._tight_prompt_for_block(epic, us, name, block))
+                total_prompt_tokens += pt; total_completion_tokens += ct; total_processing_time_ms += proc
+                historias.extend(self._parse_objs(raw))
+
+        if need_chunk_llm:
+            logging.info("[extract] LLM por chunks (sin encabezados detectados)")
+            for chunk in self._chunks(text, size=min(CHARS, 16000), overlap_ratio=0.15):
+                raw, pt, ct, proc = await self._chat(PROMPT + chunk)
+                total_prompt_tokens += pt; total_completion_tokens += ct; total_processing_time_ms += proc
+                historias.extend(self._parse_objs(raw))
+
+        # 4) De-duplicación según modo
+        docs = []
+        seen_run: set[str] = set()  # dedupe dentro del mismo lote
+        existing_codes: set[str] = set()
+
+        if dedupe_mode == "global":
+            existing_codes = {
+                d["code"]
+                async for d in db.user_stories.find({}, {"code": 1, "_id": 0})
+            }
+        elif dedupe_mode == "project":
+            existing_codes = {
+                d["code"]
+                async for d in db.user_stories.find({"project_id": project_id}, {"code": 1, "_id": 0})
+            }
+        elif dedupe_mode == "none":
+            existing_codes = set()
+
         for h in historias:
-            if h.us in seen:
+            # dedupe dentro del mismo batch (mismo 'us' repetido)
+            if dedupe_mode != "none" and (h.us in seen_run or h.us in existing_codes):
                 continue
-            seen.add(h.us)
-            docs.append(
-                {
-                    "project_id":  project_id,
-                    "epica":       h.epic,
-                    "nombre":      h.nombre,
-                    "descripcion": h.descripcion,
-                    "criterios":   h.criterios,
-                    "code":        h.us,
-                    "created_at":  datetime.utcnow(),
-                }
-            )
+            seen_run.add(h.us)
 
-        # 5) Insertar lote (sin detenerse por otros duplicados inesperados)
+            docs.append({
+                "project_id":  project_id,
+                "epica":       h.epic,
+                "nombre":      h.nombre,
+                "descripcion": h.descripcion,
+                "criterios":   h.criterios,
+                "code":        h.us,                           # mantiene semántica original
+                "code_full":   f"{project_id}::{h.us}",        # opcional para índice único alterno
+                "created_at":  datetime.utcnow(),
+            })
+
+        # 5) Inserción robusta (soporta unique en code_full o {project_id,code})
         if docs:
             try:
                 await db.user_stories.insert_many(docs, ordered=False)
-            except BulkWriteError:
-                pass
-        
+            except BulkWriteError as e:
+                logging.warning(f"[insert] BulkWriteError: {getattr(e, 'details', '')}")
+                # Intento por-doc para rescatar válidos si hay colisiones
+                for d in docs:
+                    try:
+                        await db.user_stories.insert_one(d)
+                    except DuplicateKeyError:
+                        # Ya existe según índice único → continuar sin romper
+                        continue
+                    except Exception as ex:
+                        logging.error(f"[insert_one] unexpected: {ex}")
+
         await db.projects.update_one(
             {"_id": project_id},
-            {
-                "$set": {
-                    "total_prompt_tokens": total_prompt_tokens,
-                    "total_completion_tokens": total_completion_tokens,
-                    "total_processing_time_ms": total_processing_time_ms,
-                }
-            }
+            {"$set": {
+                "total_prompt_tokens": total_prompt_tokens,
+                "total_completion_tokens": total_completion_tokens,
+                "total_processing_time_ms": total_processing_time_ms,
+            }}
         )
 
         return PdfImportOut(
@@ -134,29 +209,19 @@ class PdfService:
             total_processing_time_ms=total_processing_time_ms,
         )
 
-    # ───────── helpers principales ─────────
-    async def _chat(self, chunk: str) -> tuple[str, int, int, float]:
-        """
-        Llama al modelo Gemini en un hilo aparte para no bloquear el event-loop.
-        Ahora es tolerante a fallos: si Gemini no devuelve contenido,
-        retorna una cadena vacía en lugar de lanzar una excepción.
-        Retorna el contenido, prompt_tokens, completion_tokens y tiempo de procesamiento.
-        """
+    # ───────── LLM ─────────
+    async def _chat(self, full_prompt: str) -> tuple[str, int, int, float]:
         model = genai.GenerativeModel(MODEL)
-        prompt_tokens = 0
-        completion_tokens = 0
+        prompt_tokens = completion_tokens = 0
         processing_time_ms = 0.0
 
         def _generate():
             nonlocal prompt_tokens, completion_tokens, processing_time_ms
             try:
-                start_time = time.perf_counter() # Iniciar el contador de tiempo
+                t0 = time.perf_counter()
                 resp = model.generate_content(
-                    PROMPT + chunk,
-                    generation_config={
-                        "temperature": 0.2, # Un poco más determinista para JSON
-                        "max_output_tokens": 8192,
-                    },
+                    full_prompt,
+                    generation_config={"temperature": 0.15, "max_output_tokens": 8192},
                     safety_settings={
                         'HARM_CATEGORY_HARASSMENT': 'BLOCK_NONE',
                         'HARM_CATEGORY_HATE_SPEECH': 'BLOCK_NONE',
@@ -164,76 +229,64 @@ class PdfService:
                         'HARM_CATEGORY_DANGEROUS_CONTENT': 'BLOCK_NONE',
                     }
                 )
-                end_time = time.perf_counter() # Finalizar el contador de tiempo
-                processing_time_ms = (end_time - start_time) * 1000 # Convertir a milisegundos
-
-                if resp.usage_metadata:
-                    prompt_tokens = resp.usage_metadata.prompt_token_count
-                    completion_tokens = resp.usage_metadata.candidates_token_count
-                return resp.text
-            except ValueError:
-                finish_reason = "DESCONOCIDA"
-                if resp.candidates and resp.candidates[0].finish_reason:
-                    finish_reason = resp.candidates[0].finish_reason.name
-
-                logging.warning(
-                    "Gemini no devolvió contenido para un chunk. "
-                    f"Razón de finalización probable: {finish_reason}"
-                )
-                return "" # Devolver una cadena vacía para no detener el proceso
+                processing_time_ms = (time.perf_counter() - t0) * 1000
+                um = getattr(resp, "usage_metadata", None)
+                if um:
+                    prompt_tokens = um.prompt_token_count or 0
+                    completion_tokens = um.candidates_token_count or 0
+                return getattr(resp, "text", "") or ""
             except Exception as e:
-                logging.error(f"Error inesperado al llamar a la API de Gemini: {e}")
+                logging.warning(f"[llm] error o vacío: {e}")
                 return ""
-
 
         raw_text = await anyio.to_thread.run_sync(_generate)
         return raw_text, prompt_tokens, completion_tokens, processing_time_ms
 
     def _parse_objs(self, raw: str) -> List[PdfStoryOut]:
-        """
-        Lee línea a línea el bloque devuelto por el LLM y valida solo
-        las que sean JSON completo.  Descarta silenciosamente líneas inválidas.
-        """
         historias: list[PdfStoryOut] = []
-        if not raw: # Si la entrada es vacía, no hay nada que hacer.
-            return historias
+        if not raw: return historias
+        raw = raw.replace("BEGIN_JSON", "").replace("END_JSON", "")
+        raw = raw.replace("```json", "").replace("```", "").strip()
 
         for line in raw.splitlines():
             line = line.strip()
-            # Una comprobación más flexible para JSON que pudiera estar indentado
+            if not line: continue
+            candidates = []
             if line.startswith("{") and line.endswith("}"):
+                candidates = [line]
+            elif "}{" in line:
+                parts = line.split("}{")
+                candidates = ["{"+parts[0].lstrip("{").strip(), *[p.strip() for p in parts[1:-1]], parts[-1].rstrip("}").strip()+"}"]
+                candidates = [c for c in candidates if c.startswith("{") and c.endswith("}")]
+
+            for cand in (candidates or [line]):
                 try:
-                    data = json.loads(line)
-                    # Aseguramos que la clave "criterios" siempre exista
-                    if "criterios" not in data:
+                    data = json.loads(cand)
+                    if not isinstance(data.get("criterios"), list):
                         data["criterios"] = []
                     historias.append(PdfStoryOut(**data))
-                except (json.JSONDecodeError, TypeError, KeyError) as err:
-                    logging.warning(f"Línea JSON descartada por error de parseo: {err} | Línea: '{line}'")
+                except Exception:
+                    logging.debug(f"[parse] descartado: {cand[:120]}…")
         return historias
 
-    # ───────── creación de proyecto ─────────
+    # ───────── Proyecto ─────────
     async def _create_project(self, name: str, user_id: str | None = None) -> ObjectId:
         last = await db.projects.find_one(sort=[("created_at", -1)])
-        seq  = int(last["code"].split("-")[1]) + 1 if last else 1
-        
-        owner_id = ObjectId(user_id) if user_id else None
-        
-        res = await db.projects.insert_one(
-            {
-                "code":        f"PROJ-{seq:03d}",
-                "name":        name,
-                "description": "",
-                "owner_id":    owner_id,
-                "created_at":  datetime.utcnow(),
-                "total_prompt_tokens": 0,
-                "total_completion_tokens": 0,
-                "total_processing_time_ms": 0.0,
-            }
-        )
+        seq  = int(last["code"].split("-")[1]) + 1 if last and "code" in last else 1
+        owner_id = ObjectId(user_id) if user_id and ObjectId.is_valid(user_id) else None
+        res = await db.projects.insert_one({
+            "code":        f"PROJ-{seq:03d}",
+            "name":        name or "PDF importado",
+            "description": "",
+            "owner_id":    owner_id,
+            "created_at":  datetime.utcnow(),
+            "total_prompt_tokens": 0,
+            "total_completion_tokens": 0,
+            "total_processing_time_ms": 0.0,
+        })
         return res.inserted_id
 
-    # ───────── utilidades PDF y troceo (sin cambios) ──────
+    # ───────── PDF I/O ─────────
     async def _read(self, f, url, b64) -> bytes:
         if f:
             data = await f.read()
@@ -255,14 +308,91 @@ class PdfService:
             raise HTTPException(400, "PDF dañado")
         return "\n".join(p.extract_text() or "" for p in reader.pages)
 
-    def _chunks(self, text: str, size: int = CHARS):
-        """Divide sin solape para minimizar repeticiones."""
-        return [text[i : i + size] for i in range(0, len(text), size)]
+    # ───────── Normalización ─────────
+    def _normalize_text(self, text: str) -> str:
+        text = re.sub(r"(\w)-\n(\w)", r"\1\2", text)     # une cortes por guion
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\r\n?", "\n", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
+    # ───────── Bloques / Parser ─────────
+    def _iter_story_blocks(self, text: str, *, allow_without_criterios: bool = False
+                           ) -> Iterable[Tuple[str, str, str, str]]:
+        header_re = re.compile(r"(?m)^(?P<epic>\d{3})\s+(?P<us>\d{3})\s+(?P<name>.+)$")
+        matches = list(header_re.finditer(text))
+        for i, m in enumerate(matches):
+            epic, us, name = m.group("epic"), m.group("us"), m.group("name").strip()
+            start, end = m.start(), (matches[i+1].start() if i+1 < len(matches) else len(text))
+            block = text[start:end].strip()
+
+            has_crit = ("Criterios de Aceptación" in block or "Criterios de Aceptacion" in block)
+            has_como = "Como" in block
+            if allow_without_criterios or (has_crit and has_como):
+                yield (epic, us, name, block)
+
+    def _extract_structured_stories(self, text: str) -> List[PdfStoryOut]:
+        historias: list[PdfStoryOut] = []
+        for epic, us, name, block in self._iter_story_blocks(text, allow_without_criterios=False):
+            criterios = self._parse_criterios(block)
+            descripcion = self._parse_descripcion(block)
+            if descripcion:
+                historias.append(PdfStoryOut(epic=epic, us=us, nombre=name, descripcion=descripcion, criterios=criterios))
+        return historias
+
+    def _parse_criterios(self, block: str) -> List[str]:
+        idx_crit = block.find("Criterios de Aceptación")
+        if idx_crit == -1: idx_crit = block.find("Criterios de Aceptacion")
+        if idx_crit == -1: return []
+        tail = block[idx_crit:]; idx_desc = tail.find("\nComo"); tail = tail if idx_desc == -1 else tail[:idx_desc]
+        tail = tail.replace("Criterios de Aceptación Descripción", "").replace("Criterios de Aceptacion Descripcion", "")
+        criterios: List[str] = []
+        for raw in tail.splitlines():
+            line = raw.strip()
+            if not line: continue
+            if re.match(r'^(-|—|•|\*|\d+\)|\d+\.)\s+', line):
+                criterios.append(re.sub(r'^(-|—|•|\*|\d+\)|\d+\.)\s+', '', line).strip())
+            elif line.lower().startswith("criterios:"):
+                criterios += [s.strip() for s in line.split(":",1)[1].split(";") if s.strip()]
+        return criterios
+
+    def _parse_descripcion(self, block: str) -> Optional[str]:
+        m = re.search(r"Como(?:\s+[^\n]+)?(?:\n[^\n]+){0,4}", block)
+        if not m: return None
+        frag = " ".join(s.strip() for s in m.group(0).splitlines() if s.strip())
+        frag = re.sub(r"\s+", " ", frag).strip()
+        if not frag.endswith("."): frag += "."
+        return frag
+
+    # ───────── LLM por bloque ─────────
+    def _tight_prompt_for_block(self, epic: str, us: str, nombre: str, block: str) -> str:
+        header = (
+            "Instrucciones estrictas:\n"
+            "- Devuelve exactamente UNA línea JSON con las claves en este orden: epic, us, nombre, descripcion, criterios.\n"
+            f'- Usa los códigos dados: epic="{epic}" y us="{us}".\n'
+            f'- Usa el nombre dado exactamente: "{nombre}".\n'
+            '- "criterios" debe ser un array de strings.\n'
+            "- Sin texto adicional.\n\nBEGIN_JSON\n"
+        )
+        sample = f'{{"epic":"{epic}","us":"{us}","nombre":"{nombre}","descripcion":"<Como … quiero … para …>","criterios":["<Criterio 1>","<Criterio 2>"]}}'
+        return PROMPT + header + block + "\n" + sample + "\nEND_JSON"
+
+    # ───────── Troceo ─────────
+    def _chunks(self, text: str, size: int = CHARS, overlap_ratio: float = 0.1) -> Generator[str, None, None]:
+        if len(text) <= size:
+            yield text; return
+        overlap = max(200, min(int(size * overlap_ratio), 2000))
+        start = 0
+        while True:
+            end = start + size
+            yield text[start:end]
+            if end >= len(text): break
+            start += (size - overlap)
 
     @staticmethod
     def _filename(f: UploadFile | None, url: HttpUrl | None) -> str:
-        if f:
-            return f.filename
+        if f and getattr(f, "filename", None): return f.filename
         if url:
-            return url.path.rsplit("/", 1)[-1]
+            path = url.path if hasattr(url, "path") else str(url).split("?")[0]
+            return path.rsplit("/", 1)[-1] or "PDF importado"
         return "PDF importado"
