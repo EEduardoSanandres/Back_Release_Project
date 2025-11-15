@@ -21,7 +21,7 @@ from ...api.schemas.responses import ReleaseBacklogOut # Para el retorno del ser
 
 # ────────────────────────── Configuración Gemini ──────────────────────────
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = "gemini-1.5-pro"
+MODEL = "gemini-2.5-pro"
 
 # ───────────────────────────── PROMPT para Gemini ─────────────────────────
 RELEASE_BACKLOG_PROMPT = """

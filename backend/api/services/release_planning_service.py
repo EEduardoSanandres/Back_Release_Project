@@ -20,7 +20,7 @@ from ...api.schemas.responses import ReleasePlanningOut
 
 # ────────────────────────── Configuración Gemini ──────────────────────────
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = "gemini-2.0-flash-exp"
+MODEL = "gemini-2.5-pro"
 
 # ───────────────────────────── PROMPT para Gemini ─────────────────────────
 RELEASE_PLANNING_PROMPT = """

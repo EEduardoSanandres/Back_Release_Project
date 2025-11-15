@@ -16,7 +16,7 @@ from ..schemas.responses import PdfStoryOut, PdfImportOut
 from ...app.db import db
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = "gemini-2.0-flash-exp"
+MODEL = "gemini-2.5-pro"
 CHARS = 15_000
 
 PROMPT = """

@@ -21,7 +21,7 @@ from ...app.schemas import DependencyPair, DependencyGraph
 
 # ────────────────────────── Configuración Gemini ──────────────────────────
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = "gemini-1.5-pro"
+MODEL = "gemini-2.5-pro"
 
 DEPENDENCY_PROMPT = """
 Eres un analista experto en Historias de Usuario (HU).
