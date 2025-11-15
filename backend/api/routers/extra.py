@@ -7,7 +7,8 @@ from ...app.db import db
 from ...app.schemas import User, Project, UserStory, DependencyGraph
 from ..services.dependency_service import DependencyService
 from ..services.release_backlog_service import ReleaseBacklogService
-from ..schemas.responses import ReleaseBacklogOut
+from ..services.release_planning_service import ReleasePlanningService
+from ..schemas.responses import ReleaseBacklogOut, ReleasePlanningOut
 
 router = APIRouter(tags=["Extra utils"])
 
@@ -179,3 +180,24 @@ async def get_project_release_backlog(
     Obtiene el Release Backlog existente para un proyecto.
     """
     return await service.get_backlog(project_id)
+
+@router.post("/projects/{project_id}/release-planning/generate", response_model=ReleasePlanningOut)
+async def generate_release_planning(
+    project_id: str,
+    service: ReleasePlanningService = Depends()
+):
+    """
+    Genera un plan de release completo para un proyecto utilizando la configuración del proyecto
+    y las historias de usuario existentes. El plan incluye sprints, riesgos, métricas y recomendaciones.
+    """
+    return await service.generate_release_plan(project_id)
+
+@router.get("/projects/{project_id}/release-planning", response_model=ReleasePlanningOut)
+async def get_release_planning(
+    project_id: str,
+    service: ReleasePlanningService = Depends()
+):
+    """
+    Obtiene el plan de release existente para un proyecto.
+    """
+    return await service.get_release_plan(project_id)

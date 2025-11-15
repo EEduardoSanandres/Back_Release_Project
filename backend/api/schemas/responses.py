@@ -9,6 +9,11 @@ class PdfStoryOut(BaseModel):
     nombre: str
     criterios: List[str]
     descripcion: str
+    priority: str
+    story_points: int
+    dor: int
+    status: str
+    deps: int
 
 class PdfImportOut(BaseModel):
     project_id: str
@@ -33,3 +38,27 @@ class ReleaseBacklogOut(BaseModel):
     total_prompt_tokens: int
     total_completion_tokens: int
     total_processing_time_ms: float
+
+class ReleasePlanningOut(BaseModel):
+    id: str
+    project_id: str
+    release_plan: dict  # Plan completo generado por IA
+    generated_at: datetime
+    total_prompt_tokens: int
+    total_completion_tokens: int
+    total_processing_time_ms: float
+
+class ProjectConfigOut(BaseModel):
+    id: str
+    project_id: str
+    num_devs: int
+    team_velocity: int
+    sprint_duration: int
+    prioritization_metric: str
+    release_target_date: datetime  # Cambiar de date a datetime
+    team_capacity: int | None
+    optimistic_scenario: int | None
+    realistic_scenario: int | None
+    pessimistic_scenario: int | None
+    created_at: datetime
+    updated_at: datetime

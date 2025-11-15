@@ -16,37 +16,51 @@ from ..schemas.responses import PdfStoryOut, PdfImportOut
 from ...app.db import db
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = "gemini-1.5-pro"
+MODEL = "gemini-2.0-flash-exp"
 CHARS = 15_000
 
 PROMPT = """
-Eres un extractor experto de Historias de Usuario (HU).
-Analiza el texto suministrado y genera EXCLUSIVAMENTE el bloque comprendido entre
-BEGIN_JSON y END_JSON (no incluyas ni BEGIN_JSON ni END_JSON en la respuesta),
-sin explicaciones adicionales.
+Eres un experto analista de requisitos y creador de Historias de Usuario (HU).
+Analiza las especificaciones del proyecto suministradas y genera TODAS las Historias de Usuario necesarias para implementar completamente el sistema.
 
-↳ Formato (JSON por línea):
+↳ Formato de salida (JSON por línea):
 {
-  "epic"       : "<código o título de la épica>",
-  "us"         : "<código de la historia, ej. '001' o 'us-045'>",
-  "nombre"     : "<nombre breve de la HU>",
-  "descripcion": "<frase 'Como … quiero … para …'>",
-  "criterios"  : ["<Criterio 1>", "<Criterio 2>", …]
+  "epic"       : "<nombre de la épica o módulo>",
+  "us"         : "<código único de la historia, ej. 'US-001', 'AUTH-001'>",
+  "nombre"     : "<nombre breve y descriptivo de la HU>",
+  "descripcion": "<frase completa 'Como [usuario] quiero [funcionalidad] para [beneficio]'>",
+  "criterios"  : ["<Criterio de aceptación 1>", "<Criterio 2>", "<Criterio 3>", ...],
+  "priority"   : "<High|Medium|Low - basado en importancia para el negocio>",
+  "story_points": <número entero: 1,2,3,5,8,13,21 - basado en complejidad técnica>,
+  "dor"        : <número entero 0-100: porcentaje de definición completado>,
+  "status"     : "<Ready|Needs Refinement - inicialmente todas son Ready>",
+  "deps"       : <número entero: dependencias identificadas con otras HU>
 }
 
-Reglas estrictas
-1. Devuelve UNA línea JSON por historia.
-2. Usa exactamente las claves indicadas, en español, en ese orden.
-3. Todos los valores son strings, excepto "criterios", que es un array de strings.
-4. Sin saltos de línea dentro de un valor.
-5. No incluyas comentarios ni caracteres fuera del bloque JSON.
-6. Si no tienes criterios, devuelve "criterios": []
-7. No uses retornos de carro ni tabulaciones: cada historia en **una sola línea**.
-8. La salida debe ser JSON válido según RFC 8259.
+INSTRUCCIONES ESPECÍFICAS:
+1. Analiza COMPLETAMENTE las especificaciones del proyecto
+2. Identifica TODOS los módulos, funcionalidades y características mencionadas
+3. Crea historias de usuario GRANULARES para cada funcionalidad específica
+4. Cada historia debe ser independiente y testable
+5. Usa épicas lógicas para agrupar funcionalidades relacionadas
+6. Genera códigos únicos que identifiquen claramente la funcionalidad
+7. Incluye criterios de aceptación específicos y verificables
+8. Evalúa la prioridad basada en impacto en el negocio y usuarios
+9. Estima story points basándote en complejidad técnica realista
+10. Inicialmente todas las historias son "Ready" con DoR alto
 
-Ejemplo
+REGLAS TÉCNICAS:
+- Devuelve UNA línea JSON por historia
+- Usa exactamente las claves indicadas
+- Todos los valores son strings excepto "criterios"(array), "story_points"(int), "dor"(int), "deps"(int)
+- Sin saltos de línea dentro de valores
+- Cada historia en una sola línea
+- JSON válido según RFC 8259
+
+Ejemplo de historias generadas:
 BEGIN_JSON
-{"epic":"001","us":"001","nombre":"Búsqueda por palabra clave","descripcion":"Como Comprador quiero buscar productos por palabra clave para encontrar rápidamente lo que necesito.","criterios":["La búsqueda devuelve solo coincidencias de título o descripción.","La respuesta tarda < 30 ms.","Mensaje \"No se encontraron productos\" si no hay coincidencias."]}
+{"epic":"Autenticación","us":"AUTH-001","nombre":"Registro de usuarios","descripcion":"Como usuario nuevo quiero registrarme en la plataforma para acceder a mis funcionalidades.","criterios":["El formulario solicita email y contraseña","Se valida formato de email","Se verifica contraseña segura","Se envía email de confirmación"],"priority":"High","story_points":5,"dor":90,"status":"Ready","deps":0}
+{"epic":"Autenticación","us":"AUTH-002","nombre":"Inicio de sesión","descripcion":"Como usuario registrado quiero iniciar sesión para acceder a mi cuenta.","criterios":["El login acepta email/contraseña","Se valida credenciales","Se genera token de sesión","Se redirige al dashboard"],"priority":"High","story_points":3,"dor":85,"status":"Ready","deps":1}
 END_JSON
 
 El texto a analizar es:
@@ -54,7 +68,7 @@ El texto a analizar es:
 
 # ───── Servicio ──────────────────────────────────────────────────────────
 class PdfService:
-    async def extract_stories(
+    async def process_project_requirements(
         self,
         *,
         pdf_file: UploadFile | None,
@@ -62,6 +76,25 @@ class PdfService:
         pdf_b64:  str        | None,
         user_id:  str        | None = None,
     ) -> PdfImportOut:
+        """
+        Procesa PDFs con especificaciones de proyecto o historias de usuario existentes.
+        
+        Si el PDF contiene especificaciones del proyecto, genera automáticamente
+        todas las historias de usuario necesarias con análisis de prioridad,
+        story points, DoR, estado y dependencias.
+        
+        Si el PDF contiene historias de usuario existentes, las extrae y
+        completa con el análisis de Product Backlog.
+        
+        Args:
+            pdf_file: Archivo PDF subido
+            pdf_url: URL del PDF
+            pdf_b64: PDF en base64
+            user_id: ID del usuario que hace la petición
+            
+        Returns:
+            PdfImportOut con las historias procesadas/generadas
+        """
         # 1) Leer PDF → texto
         pdf_bytes = await self._read(pdf_file, pdf_url, pdf_b64)
         plain     = self._pdf_to_text(pdf_bytes)
@@ -92,8 +125,11 @@ class PdfService:
             )
         }
         docs, seen = [], set(existing_codes)
+        skipped_count = 0
         for h in historias:
             if h.us in seen:
+                logging.warning(f"Saltando historia duplicada: {h.us} (ya existe en proyecto {project_id})")
+                skipped_count += 1
                 continue
             seen.add(h.us)
             docs.append(
@@ -105,15 +141,33 @@ class PdfService:
                     "criterios":   h.criterios,
                     "code":        h.us,
                     "created_at":  datetime.utcnow(),
+                    # Campos adicionales para Product Backlog generados por IA
+                    "priority": h.priority,
+                    "story_points": h.story_points,
+                    "dor": h.dor,
+                    "status": h.status,
+                    "deps": h.deps,
+                    "ai": True,  # Estas historias vienen de IA
                 }
             )
 
-        # 5) Insertar lote (sin detenerse por otros duplicados inesperados)
+        # 5) Insertar lote con mejor manejo de errores
+        inserted_count = 0
         if docs:
             try:
-                await db.user_stories.insert_many(docs, ordered=False)
-            except BulkWriteError:
-                pass
+                result = await db.user_stories.insert_many(docs, ordered=False)
+                inserted_count = len(result.inserted_ids)
+                logging.info(f"Insertadas {inserted_count} historias de usuario en proyecto {project_id}")
+            except BulkWriteError as e:
+                # Algunos documentos pudieron insertarse, otros fallaron
+                inserted_count = e.details.get('nInserted', 0)
+                failed_count = len(e.details.get('writeErrors', []))
+                logging.warning(f"Insertadas {inserted_count} historias, {failed_count} fallaron en proyecto {project_id}")
+                for error in e.details.get('writeErrors', []):
+                    logging.warning(f"Error al insertar historia {error.get('op', {}).get('code', 'unknown')}: {error.get('errmsg', 'Unknown error')}")
+            except Exception as e:
+                logging.error(f"Error inesperado al insertar historias en proyecto {project_id}: {e}")
+                raise
         
         await db.projects.update_one(
             {"_id": project_id},
@@ -125,6 +179,10 @@ class PdfService:
                 }
             }
         )
+
+        # Log resumen final
+        total_processed = len(historias)
+        logging.info(f"Procesamiento completado: {total_processed} historias analizadas, {skipped_count} duplicadas saltadas, {inserted_count} insertadas en proyecto {project_id}")
 
         return PdfImportOut(
             project_id=str(project_id),

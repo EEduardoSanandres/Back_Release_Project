@@ -4,18 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pymongo import ASCENDING
 
 from .db import db, mongo_client
-from ..api.routers.llm  import api_router as main_router
-from ..api.routers.crud import router     as crud_router
-from ..api.routers.extra import router    as extra_router
-from ..api.routers.auth import router     as auth_router
 
 # ── Índices ────────────────────────────────────
 INDEX_MAP = {
     "users":        [({"email": ASCENDING}, {"unique": True})],
     "projects":     [({"code":  ASCENDING}, {"unique": True})],
     "user_stories": [({"project_id": ASCENDING}, {}),
-                     ({"code": ASCENDING}, {"unique": True})],
+                     ({"project_id": ASCENDING, "code": ASCENDING}, {"unique": True})],
     "dependencies": [({"project_id": ASCENDING}, {})],
+    "project_configs": [({"project_id": ASCENDING}, {"unique": True})],
 }
 
 async def init_indexes():
@@ -38,14 +35,16 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
+    # Import routers here to avoid circular imports
+    from ..api.routers.llm  import api_router as main_router
+    from ..api.routers.crud import router     as crud_router
+    from ..api.routers.extra import router    as extra_router
+    from ..api.routers.auth import router     as auth_router
+    
+    # Include routers
+    app.include_router(main_router, prefix="/api")
+    app.include_router(crud_router,  prefix="/api")
+    app.include_router(extra_router, prefix="/api")
+    app.include_router(auth_router, prefix="/api")
+    
     await init_indexes()
-
-@app.on_event("shutdown")
-def shutdown():
-    mongo_client.close()
-
-# ── Rutas ──────────────────────────────────────
-app.include_router(main_router, prefix="/api")
-app.include_router(crud_router,  prefix="/api")
-app.include_router(extra_router, prefix="/api")
-app.include_router(auth_router, prefix="/api")

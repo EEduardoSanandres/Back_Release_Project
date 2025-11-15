@@ -28,12 +28,20 @@ async def pdf_to_stories(
     svc: PdfService       = Depends(),
 ):
     """
-    • Crea un registro en `projects` por cada PDF subido.  
-    • Devuelve `project_id` + las historias extraídas (campos en español).  
-    • Inserta las HU en `user_stories`, mapeando la descripción → role / action / benefit.
+    Procesa PDFs con especificaciones de proyecto o historias de usuario existentes.
+    
+    Si el PDF contiene especificaciones del proyecto, genera automáticamente
+    todas las historias de usuario necesarias con análisis completo de Product Backlog.
+    
+    Si el PDF contiene historias de usuario existentes, las extrae y
+    completa con el análisis de prioridad, story points, DoR, estado y dependencias.
+    
+    • Crea un registro en `projects` por cada PDF subido.
+    • Devuelve `project_id` + las historias procesadas/generadas.
+    • Inserta las HU en `user_stories` con todos los campos del Product Backlog.
     • Guarda el `user_id` como `owner_id` del proyecto.
     """
-    return await svc.extract_stories(
+    return await svc.process_project_requirements(
         pdf_file=pdf_file,
         pdf_url=pdf_url,
         pdf_b64=pdf_b64,
