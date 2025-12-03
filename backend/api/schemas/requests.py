@@ -7,7 +7,12 @@ from pydantic import BaseModel, HttpUrl, Field, EmailStr
 class UserCreateIn(BaseModel):
     email: EmailStr
     name: str
-    password: str = Field(..., min_length=6, description="Password must be at least 6 characters")
+    password: str = Field(
+        ..., 
+        min_length=6, 
+        max_length=72,
+        description="Password must be between 6 and 72 characters (bcrypt limit)"
+    )
     role: Literal["student", "advisor", "po", "admin"]
 
 # ---------- Chat ----------

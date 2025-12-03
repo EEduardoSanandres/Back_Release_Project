@@ -12,6 +12,7 @@ networkx>=3.2
 pypdf>=3.9
 python-multipart
 google-generativeai
+bcrypt>=4.0.0
 passlib[bcrypt]
 fastapi-crudrouter-mongodb
 httpx
