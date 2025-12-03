@@ -1,7 +1,7 @@
 import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pymongo import ASCENDING
 
 from .db import db, mongo_client
@@ -23,7 +23,31 @@ async def init_indexes():
     logging.info("✔ MongoDB indexes ready")
 
 # ── FastAPI ────────────────────────────────────
-app = FastAPI(docs_url="/docs", redoc_url=None)
+# Configure for Cloud Run - trust proxy headers
+app = FastAPI(
+    docs_url="/docs", 
+    redoc_url=None,
+    root_path="",
+    # Trust forwarded headers from Cloud Run
+    servers=[
+        {"url": "https://back-release-project-142164661472.southamerica-west1.run.app", "description": "Production"},
+        {"url": "http://localhost:8080", "description": "Local"}
+    ]
+)
+
+# ── Proxy Headers Middleware ──────────────────
+@app.middleware("http")
+async def add_proxy_headers(request: Request, call_next):
+    """Handle X-Forwarded-Proto header from Cloud Run to ensure HTTPS URLs"""
+    # Check if request comes through Cloud Run proxy
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    
+    if forwarded_proto == "https":
+        # Override the URL scheme to https for URL generation
+        request.scope["scheme"] = "https"
+    
+    response = await call_next(request)
+    return response
 
 # ── CORS Configuration ─────────────────────────
 app.add_middleware(
