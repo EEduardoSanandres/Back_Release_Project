@@ -42,7 +42,11 @@ class ReleaseBacklogOut(BaseModel):
 class ReleasePlanningOut(BaseModel):
     id: str
     project_id: str
-    release_plan: dict  # Plan completo generado por IA
+    releases: list[dict]
+    num_releases: int
+    project_analysis: dict
+    overall_risks: list[dict]
+    overall_recommendations: list[str]
     generated_at: datetime
     total_prompt_tokens: int
     total_completion_tokens: int
@@ -62,3 +66,51 @@ class ProjectConfigOut(BaseModel):
     pessimistic_scenario: int | None
     created_at: datetime
     updated_at: datetime
+
+class DashboardStatsOut(BaseModel):
+    total_projects: int
+    projects_growth: str
+    total_active_stories: int
+    pending_refinement: int
+    planned_releases: int
+    next_release_date: str | None 
+    ai_analysis_count: int
+    ai_analysis_period: str
+
+class ProjectStatsOut(BaseModel):
+    total_stories: int
+    in_development: int
+    completed: int
+    pending: int
+    releases_count: int
+    total_story_points: int
+    completed_story_points: int
+    progress_percentage: float
+
+class CalendarEventOut(BaseModel):
+    id: str
+    title: str
+    type: str
+    start_date: str
+    end_date: str
+    color: str
+    text_color: str
+    release_id: str | None = None
+    sprint_number: int | None = None
+    description: str
+
+class EventDetailOut(BaseModel):
+    id: str
+    title: str
+    location: str
+    time: str
+    date: str
+    color: str
+    event_type: str
+    sprint_number: int | None = None
+    release_id: str | None = None
+    description: str
+
+class CalendarEventsOut(BaseModel):
+    events: list[CalendarEventOut]
+    event_details: list[EventDetailOut]

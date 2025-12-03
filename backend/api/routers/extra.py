@@ -184,13 +184,19 @@ async def get_project_release_backlog(
 @router.post("/projects/{project_id}/release-planning/generate", response_model=ReleasePlanningOut)
 async def generate_release_planning(
     project_id: str,
+    num_releases: int = 1,
     service: ReleasePlanningService = Depends()
 ):
     """
-    Genera un plan de release completo para un proyecto utilizando la configuración del proyecto
-    y las historias de usuario existentes. El plan incluye sprints, riesgos, métricas y recomendaciones.
+    Genera un plan de release completo para un proyecto dividido en múltiples releases.
+    
+    Args:
+        project_id: ID del proyecto
+        num_releases: Cantidad de releases a generar (default: 1)
+    
+    El plan incluye sprints distribuidos en releases, con título, descripción, riesgos y recomendaciones.
     """
-    return await service.generate_release_plan(project_id)
+    return await service.generate_release_plan(project_id, num_releases)
 
 @router.get("/projects/{project_id}/release-planning", response_model=ReleasePlanningOut)
 async def get_release_planning(

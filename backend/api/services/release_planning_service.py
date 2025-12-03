@@ -30,19 +30,22 @@ INSTRUCCIONES CRÍTICAS:
 - Comienza DIRECTAMENTE con {{
 - Termina DIRECTAMENTE con }}
 
-TAREA: Genera un plan de release para este proyecto considerando las dependencias entre historias.
+TAREA: Genera un plan de release dividido en {num_releases} releases considerando las dependencias entre historias.
 
 DATOS DEL PROYECTO:
 - Historias: {len_stories} totales, {total_story_points} story points
 - Equipo: {num_devs} desarrolladores, velocidad {team_velocity} SP/sprint
 - Sprint duration: {sprint_duration} semanas
 - Fecha objetivo: {release_target_date}
+- Número de releases: {num_releases}
 
 INSTRUCCIONES IMPORTANTES:
-1. **DEPENDENCIAS**: Cada historia tiene un campo "Dependencias" que indica cuántas historias dependen de ella. Las historias con dependencias deben programarse ANTES que las que dependen de ellas.
-2. **ORDENAMIENTO**: Si historia A tiene "Dependencias: 2", significa que 2 historias dependen de A, por lo que A debe ir en un sprint anterior.
-3. **INCLUIR TODAS**: Debes incluir las {len_stories} historias exactamente una vez cada una.
-4. **FECHAS REALISTAS**: El primer sprint comienza el {sprint_start_date} y termina el {sprint_end_date}.
+1. **RELEASES**: Debes dividir el proyecto en EXACTAMENTE {num_releases} releases. Cada release debe tener un título descriptivo y una descripción clara de sus objetivos.
+2. **DISTRIBUCIÓN**: Distribuye los sprints equitativamente entre los {num_releases} releases. Cada release agrupa varios sprints consecutivos.
+3. **DEPENDENCIAS**: Las historias con dependencias deben programarse ANTES que las que dependen de ellas.
+4. **ORDENAMIENTO**: Si historia A tiene "Dependencias: 2", significa que 2 historias dependen de A, por lo que A debe ir en un sprint anterior.
+5. **INCLUIR TODAS**: Debes incluir las {len_stories} historias exactamente una vez cada una.
+6. **FECHAS REALISTAS**: El primer sprint comienza el {sprint_start_date} y termina el {sprint_end_date}.
 
 FORMATO JSON REQUERIDO:
 {{
@@ -53,34 +56,53 @@ FORMATO JSON REQUERIDO:
     "target_date_feasible": true,
     "recommended_adjustments": []
   }},
-  "sprints": [
+  "releases": [
     {{
-      "sprint_number": 1,
+      "release_number": 1,
+      "title": "Release 1: Infraestructura Base",
+      "description": "Establecer la infraestructura fundamental y componentes core del sistema",
       "start_date": "{sprint_start_date}",
-      "end_date": "{sprint_end_date}",
-      "story_points_planned": 30,
-      "capacity_used_percentage": 100,
-      "stories": [
+      "end_date": "YYYY-MM-DD",
+      "sprints": [
         {{
-          "code": "HISTORIA-1",
-          "name": "Nombre de historia",
-          "story_points": 5,
-          "priority": "HIGH",
-          "dependencies": []
+          "sprint_number": 1,
+          "start_date": "{sprint_start_date}",
+          "end_date": "{sprint_end_date}",
+          "story_points_planned": 30,
+          "capacity_used_percentage": 100,
+          "stories": [
+            {{
+              "code": "HISTORIA-1",
+              "name": "Nombre de historia",
+              "story_points": 5,
+              "priority": "HIGH",
+              "dependencies": []
+            }}
+          ]
         }}
+      ],
+      "total_story_points": 100,
+      "risks": [
+        {{
+          "level": "HIGH",
+          "description": "Descripción del riesgo específico de este release",
+          "mitigation": "Estrategia de mitigación"
+        }}
+      ],
+      "recommendations": [
+        "Recomendación específica para este release"
       ]
     }}
   ],
-  "risks": [
+  "overall_risks": [
     {{
       "level": "HIGH",
-      "description": "Descripción del riesgo",
-      "mitigation": "Estrategia de mitigación"
+      "description": "Riesgo general del proyecto",
+      "mitigation": "Estrategia general"
     }}
   ],
-  "recommendations": [
-    "Recomendación 1",
-    "Recomendación 2"
+  "overall_recommendations": [
+    "Recomendación general del proyecto"
   ]
 }}
 
@@ -92,14 +114,18 @@ class ReleasePlanningService:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
-    async def generate_release_plan(self, project_id: str) -> ReleasePlanningOut:
+    async def generate_release_plan(self, project_id: str, num_releases: int = 1) -> ReleasePlanningOut:
         """
-        Genera un plan de release completo para un proyecto.
+        Genera un plan de release completo para un proyecto dividido en múltiples releases.
+        
+        Args:
+            project_id: ID del proyecto
+            num_releases: Cantidad de releases a generar (default: 1)
         """
         start_time = time.time()
 
         try:
-            self.logger.info(f"Generando plan de release para proyecto: {project_id}")
+            self.logger.info(f"Generando plan de release para proyecto: {project_id} con {num_releases} releases")
 
             # 1. Obtener configuración del proyecto
             project_config = await self._get_project_config(project_id)
@@ -145,24 +171,26 @@ class ReleasePlanningService:
             # Verificar viabilidad del proyecto DESPUÉS de generar el plan
             # (no antes, porque la IA puede optimizar mejor la distribución)
 
-            # 4. Generar plan con IA
+            # 4. Generar plan con IA (ahora con múltiples releases)
             release_plan = await self._generate_plan_with_ai(
-                project_config, stories_data, len(user_stories), total_story_points, estimated_sprints_needed
+                project_config, stories_data, len(user_stories), total_story_points, estimated_sprints_needed, num_releases
             )
 
-            # Verificar que todas las historias estén incluidas en el plan
-            if release_plan and "sprints" in release_plan:
-                total_stories_in_plan = sum(len(sprint.get("stories", [])) for sprint in release_plan["sprints"])
-                self.logger.info(f"Plan generado: {len(release_plan['sprints'])} sprints, {total_stories_in_plan} historias incluidas")
+            # Verificar que todas las historias estén incluidas en el plan (ahora dentro de releases)
+            if release_plan and "releases" in release_plan:
+                total_stories_in_plan = 0
+                for release in release_plan["releases"]:
+                    for sprint in release.get("sprints", []):
+                        total_stories_in_plan += len(sprint.get("stories", []))
+                
+                total_sprints = sum(len(release.get("sprints", [])) for release in release_plan["releases"])
+                self.logger.info(f"Plan generado: {len(release_plan['releases'])} releases, {total_sprints} sprints, {total_stories_in_plan} historias incluidas")
 
                 if total_stories_in_plan < len(user_stories):
                     self.logger.warning(f"FALTAN HISTORIAS: Enviadas {len(user_stories)}, incluidas en plan {total_stories_in_plan}")
-                    # Intentar regenerar si faltan historias
-                    self.logger.info("Regenerando plan para incluir todas las historias...")
-                    release_plan = await self._regenerate_complete_plan(project_config, user_stories, release_plan, total_story_points, estimated_sprints_needed)
 
             # Validar viabilidad del plan generado
-            plan_viability = self._validate_generated_plan_viability(release_plan, project_config)
+            plan_viability = self._validate_generated_plan_viability_multi_release(release_plan, project_config)
             if not plan_viability["is_viable"]:
                 self.logger.warning(f"🚫 PLAN GENERADO NO VIABLE: {plan_viability['reason']}")
                 # Actualizar el análisis del proyecto
@@ -172,34 +200,29 @@ class ReleasePlanningService:
                         release_plan["project_analysis"]["recommended_adjustments"] = []
                     release_plan["project_analysis"]["recommended_adjustments"].extend(plan_viability["recommendations"])
 
-                # Agregar riesgos y recomendaciones
-                if "risks" not in release_plan:
-                    release_plan["risks"] = []
-                release_plan["risks"].extend(plan_viability["risks"])
+                # Agregar riesgos y recomendaciones generales
+                if "overall_risks" not in release_plan:
+                    release_plan["overall_risks"] = []
+                release_plan["overall_risks"].extend(plan_viability["risks"])
 
-                if "recommendations" not in release_plan:
-                    release_plan["recommendations"] = []
-                release_plan["recommendations"].extend(plan_viability["recommendations"])
-
-            # Verificar y corregir historias duplicadas
-            duplicate_check = self._check_and_fix_duplicate_stories(release_plan, user_stories)
-            if duplicate_check["duplicates_found"]:
-                self.logger.warning(f"⚠️ HISTORIAS DUPLICADAS ENCONTRADAS: {duplicate_check['duplicates']}")
-                release_plan = duplicate_check["corrected_plan"]
-                if "recommendations" not in release_plan:
-                    release_plan["recommendations"] = []
-                release_plan["recommendations"].append("Se corrigieron historias duplicadas en el plan generado")
+                if "overall_recommendations" not in release_plan:
+                    release_plan["overall_recommendations"] = []
+                release_plan["overall_recommendations"].extend(plan_viability["recommendations"])
 
             # 5. Calcular métricas de uso de tokens
             end_time = time.time()
             processing_time = (end_time - start_time) * 1000
 
-            # 6. Crear y guardar el plan de release
+            # 6. Crear y guardar el plan de release (ahora con múltiples releases)
             plan_doc = {
                 "project_id": ObjectId(project_id),
                 "project_config_id": ObjectId(project_config["id"]),
                 "user_story_ids": [ObjectId(story["id"]) for story in user_stories],
-                "release_plan": release_plan,
+                "releases": release_plan.get("releases", []),
+                "num_releases": num_releases,
+                "project_analysis": release_plan.get("project_analysis", {}),
+                "overall_risks": release_plan.get("overall_risks", []),
+                "overall_recommendations": release_plan.get("overall_recommendations", []),
                 "generated_at": datetime.utcnow(),
                 "total_prompt_tokens": release_plan.get("usage", {}).get("prompt_tokens", 0),
                 "total_completion_tokens": release_plan.get("usage", {}).get("completion_tokens", 0),
@@ -214,7 +237,11 @@ class ReleasePlanningService:
             return ReleasePlanningOut(
                 id=str(result.inserted_id),
                 project_id=project_id,
-                release_plan=release_plan,
+                releases=plan_doc["releases"],
+                num_releases=num_releases,
+                project_analysis=plan_doc["project_analysis"],
+                overall_risks=plan_doc["overall_risks"],
+                overall_recommendations=plan_doc["overall_recommendations"],
                 generated_at=plan_doc["generated_at"],
                 total_prompt_tokens=plan_doc["total_prompt_tokens"],
                 total_completion_tokens=plan_doc["total_completion_tokens"],
@@ -230,7 +257,7 @@ class ReleasePlanningService:
 
     async def get_release_plan(self, project_id: str) -> ReleasePlanningOut:
         """
-        Obtiene el plan de release existente para un proyecto.
+        Obtiene el plan de release existente para un proyecto (ahora con múltiples releases).
         """
         plan = await db.release_plans.find_one({"project_id": ObjectId(project_id)})
         if not plan:
@@ -242,11 +269,15 @@ class ReleasePlanningService:
         return ReleasePlanningOut(
             id=str(plan["_id"]),
             project_id=str(plan["project_id"]),
-            release_plan=plan["release_plan"],
+            releases=plan.get("releases", []),
+            num_releases=plan.get("num_releases", 1),
+            project_analysis=plan.get("project_analysis", {}),
+            overall_risks=plan.get("overall_risks", []),
+            overall_recommendations=plan.get("overall_recommendations", []),
             generated_at=plan["generated_at"],
-            total_prompt_tokens=plan["total_prompt_tokens"],
-            total_completion_tokens=plan["total_completion_tokens"],
-            total_processing_time_ms=plan["total_processing_time_ms"]
+            total_prompt_tokens=plan.get("total_prompt_tokens", 0),
+            total_completion_tokens=plan.get("total_completion_tokens", 0),
+            total_processing_time_ms=plan.get("total_processing_time_ms", 0)
         )
 
     async def _get_project_config(self, project_id: str) -> Dict[str, Any]:
@@ -331,9 +362,10 @@ Criterios: {', '.join(story['criterios'])}
         stories_data: str,
         total_stories: int,
         total_story_points: int,
-        estimated_sprints: int
+        estimated_sprints: int,
+        num_releases: int = 1
     ) -> Dict[str, Any]:
-        """Genera el plan de release usando IA."""
+        """Genera el plan de release usando IA dividido en múltiples releases."""
         # Calcular fechas realistas para el primer sprint
         from datetime import datetime, timedelta
         today = datetime.now()
@@ -364,6 +396,7 @@ Criterios: {', '.join(story['criterios'])}
             len_stories=total_stories,
             total_story_points=total_story_points,
             estimated_sprints=estimated_sprints,
+            num_releases=num_releases,
             sprint_start_date=sprint_start_date,
             sprint_end_date=sprint_end_date
         )
@@ -1114,3 +1147,99 @@ Criterios: {', '.join(story['criterios'])}
             "risks": risks
         }
 
+
+    def _validate_generated_plan_viability_multi_release(self, release_plan: Dict[str, Any], project_config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Valida si el plan de release con MÚLTIPLES RELEASES cabe en la fecha límite.
+        """
+        from datetime import datetime, date
+        issues = []
+        recommendations = []
+        risks = []
+        is_viable = True
+
+        if not release_plan or "releases" not in release_plan or not release_plan["releases"]:
+            return {
+                "is_viable": False,
+                "reason": "Plan no generado correctamente",
+                "issues": ["Plan de releases no generado"],
+                "recommendations": ["Vuelva a generar el plan"],
+                "risks": []
+            }
+
+        # Obtener la fecha del último sprint del último release
+        last_release = release_plan["releases"][-1]
+        if not last_release.get("sprints"):
+            return {
+                "is_viable": False,
+                "reason": "Último release sin sprints",
+                "issues": ["Último release no contiene sprints"],
+                "recommendations": ["Vuelva a generar el plan"],
+                "risks": []
+            }
+
+        last_sprint = last_release["sprints"][-1]
+        last_sprint_end = last_sprint.get("end_date", "")
+
+        # Obtener fecha objetivo del proyecto
+        target_date_str = project_config.get("release_target_date", "")
+        if not target_date_str or not last_sprint_end:
+            return {
+                "is_viable": True,  # No podemos validar sin fechas
+                "reason": "No hay fechas para validar",
+                "issues": [],
+                "recommendations": [],
+                "risks": []
+            }
+
+        try:
+            # Parsear fechas
+            if isinstance(target_date_str, str):
+                target_date = datetime.fromisoformat(target_date_str.replace('Z', '+00:00')).date()
+            else:
+                target_date = target_date_str.date() if hasattr(target_date_str, 'date') else target_date_str
+
+            project_end_date = datetime.fromisoformat(last_sprint_end).date()
+
+            # Comparar fechas
+            if project_end_date > target_date:
+                is_viable = False
+                days_over = (project_end_date - target_date).days
+                weeks_over = days_over // 7
+
+                issues.append(f"Proyecto termina {days_over} días ({weeks_over} semanas) después de la fecha límite")
+                recommendations.append("Reducir el alcance del proyecto o extender la fecha objetivo")
+                recommendations.append("Aumentar la velocidad del equipo")
+                recommendations.append("Considerar reducir el número de releases")
+
+                risks.append({
+                    "level": "CRITICAL",
+                    "description": f"Fecha límite excedida por {days_over} días - proyecto destinado al fracaso",
+                    "mitigation": "Negociar extensión de fecha límite con stakeholders"
+                })
+
+            elif project_end_date == target_date:
+                recommendations.append("Proyecto ajustado justo a la fecha límite - considere buffer adicional")
+                risks.append({
+                    "level": "MEDIUM",
+                    "description": "Proyecto termina exactamente en la fecha límite - sin margen de error",
+                    "mitigation": "Agregar buffer de al menos 1-2 semanas"
+                })
+
+            else:
+                # Proyecto termina ANTES de la fecha límite - es viable
+                days_early = (target_date - project_end_date).days
+                self.logger.info(f" Proyecto viable: termina {days_early} días antes de la fecha límite")
+
+        except (ValueError, TypeError, AttributeError) as e:
+            self.logger.warning(f"No se pudo validar fechas del plan: {e}")
+            # No fallar si no podemos validar fechas
+            is_viable = True
+
+        return {
+            "is_viable": is_viable,
+            "reason": "; ".join(issues) if issues else "Plan viable",
+            "issues": issues,
+            "recommendations": recommendations,
+            "risks": risks
+        }
