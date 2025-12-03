@@ -40,6 +40,9 @@ async def register_user(
     user_data: UserCreateIn,
     auth_svc: AuthService = Depends(auth_service)
 ):
+    import logging
+    logging.info(f"Registering user: {user_data.email} | Password length: {len(user_data.password)}")
+    
     try:
         user = await auth_svc.create_user(user_data)
         return UserResponse.from_user(user)
@@ -47,21 +50,22 @@ async def register_user(
         raise
     except ValueError as e:
         # Errores de validación de bcrypt
-        if "72 bytes" in str(e):
+        error_msg = str(e)
+        logging.error(f"ValueError: {error_msg}")
+        if "72 bytes" in error_msg:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La contraseña es demasiado larga (máximo 72 caracteres)"
+                detail=f"Password issue: length={len(user_data.password)}, bytes={len(user_data.password.encode('utf-8'))}, error={error_msg}"
             )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error de validación: {str(e)}"
+            detail=f"Error de validación: {error_msg}"
         )
     except Exception as e:
-        import logging
-        logging.error(f"Error creando usuario: {type(e).__name__}: {str(e)}")
+        logging.error(f"Error creando usuario: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno del servidor"
+            detail=f"Error: {type(e).__name__}: {str(e)}"
         )
 
 @router.post("/login", response_model=LoginResponse)
