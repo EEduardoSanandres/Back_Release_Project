@@ -28,10 +28,15 @@ app = FastAPI(docs_url="/docs", redoc_url=None)
 # ── HTTPS Redirect Middleware ─────────────────
 @app.middleware("http")
 async def force_https(request: Request, call_next):
-    """Force HTTPS on Cloud Run deployment"""
-    if request.url.scheme == "http" and "run.app" in request.url.hostname:
-        url = request.url.replace(scheme="https")
-        return RedirectResponse(url=str(url), status_code=301)
+    """Force HTTPS on Cloud Run deployment - check X-Forwarded-Proto header"""
+    # Cloud Run uses X-Forwarded-Proto header to indicate original protocol
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    
+    if forwarded_proto == "http" and "run.app" in request.headers.get("host", ""):
+        # Build HTTPS URL
+        url = str(request.url).replace("http://", "https://", 1)
+        return RedirectResponse(url=url, status_code=301)
+    
     return await call_next(request)
 
 # ── CORS Configuration ─────────────────────────
