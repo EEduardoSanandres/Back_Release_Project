@@ -1,6 +1,7 @@
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pymongo import ASCENDING
 
 from .db import db, mongo_client
@@ -23,6 +24,15 @@ async def init_indexes():
 
 # ── FastAPI ────────────────────────────────────
 app = FastAPI(docs_url="/docs", redoc_url=None)
+
+# ── HTTPS Redirect Middleware ─────────────────
+@app.middleware("http")
+async def force_https(request: Request, call_next):
+    """Force HTTPS on Cloud Run deployment"""
+    if request.url.scheme == "http" and "run.app" in request.url.hostname:
+        url = request.url.replace(scheme="https")
+        return RedirectResponse(url=str(url), status_code=301)
+    return await call_next(request)
 
 # ── CORS Configuration ─────────────────────────
 app.add_middleware(
