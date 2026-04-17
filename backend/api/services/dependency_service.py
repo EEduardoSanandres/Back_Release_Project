@@ -21,7 +21,7 @@ from ...app.schemas import DependencyPair, DependencyGraph
 
 # ────────────────────────── Configuración Gemini ──────────────────────────
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = "gemini-2.5-pro"
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
 
 DEPENDENCY_PROMPT = """
 Eres un analista experto en Historias de Usuario (HU).
@@ -57,7 +57,9 @@ class DependencyService:
         ).to_list(None)
 
         if not stories:
+            logging.error(f"No se encontraron historias para el proyecto {project_id}")
             raise HTTPException(404, "El proyecto no tiene historias de usuario")
+        logging.info(f"Se encontraron {len(stories)} historias de usuario para el grafo.")
 
         hu_list = "\n".join(f"{s['code']} - {s['nombre']}" for s in stories)
 
@@ -73,11 +75,13 @@ class DependencyService:
         }
 
         # Usamos replace_one con upsert=True para insertar o actualizar el grafo
+        logging.info(f"Guardando grafo de dependencias en DB para proyecto {project_id}...")
         await db.dependencies_graph.replace_one(
             {"project_id": pid},
             graph_doc,
             upsert=True
         )
+        logging.info("Grafo guardado exitosamente.")
 
         # Si el usuario quiere el objeto DependencyGraph de vuelta en la API
         # deberíamos devolverlo con las métricas ya incluidas

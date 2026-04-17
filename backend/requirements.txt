@@ -18,3 +18,5 @@ fastapi-crudrouter-mongodb
 httpx
 anyio
 pymongo
+pytest>=7.4.0
+pytest-asyncio>=0.21.0

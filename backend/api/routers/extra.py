@@ -169,7 +169,14 @@ async def generate_project_release_backlog(
     Genera (o regenera) el Release Backlog ordenado para un proyecto
     basándose en sus Historias de Usuario y dependencias.
     """
-    return await service.generate_backlog(project_id)
+    try:
+        return await service.generate_backlog(project_id)
+    except Exception as e:
+        import logging
+        logging.error(f"Error generando Release Backlog para proyecto {project_id}: {str(e)}", exc_info=True)
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Error interno al generar release backlog: {str(e)}")
 
 @router.get("/projects/{project_id}/release-backlog", response_model=ReleaseBacklogOut)
 async def get_project_release_backlog(
@@ -196,7 +203,14 @@ async def generate_release_planning(
     
     El plan incluye sprints distribuidos en releases, con título, descripción, riesgos y recomendaciones.
     """
-    return await service.generate_release_plan(project_id, num_releases)
+    try:
+        return await service.generate_release_plan(project_id, num_releases)
+    except Exception as e:
+        import logging
+        logging.error(f"Error generando Release Planning para proyecto {project_id}: {str(e)}", exc_info=True)
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Error interno al generar release planning: {str(e)}")
 
 @router.get("/projects/{project_id}/release-planning", response_model=ReleasePlanningOut)
 async def get_release_planning(

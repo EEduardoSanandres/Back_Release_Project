@@ -21,7 +21,7 @@ from ...api.schemas.responses import ReleaseBacklogOut # Para el retorno del ser
 
 # ────────────────────────── Configuración Gemini ──────────────────────────
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = "gemini-2.5-pro"
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
 
 # ───────────────────────────── PROMPT para Gemini ─────────────────────────
 RELEASE_BACKLOG_PROMPT = """
@@ -61,18 +61,27 @@ class ReleaseBacklogService:
     """Genera y gestiona el grafo de dependencias para un proyecto."""
 
     async def generate_backlog(self, project_id: str) -> ReleaseBacklogOut:
-        pid = ObjectId(project_id)
+        logging.info(f"=== INICIANDO GENERACIÓN DE BACKLOG PARA PROYECTO: {project_id} ===")
+        try:
+            pid = ObjectId(project_id)
+        except Exception as e:
+            logging.error(f"ID de proyecto inválido: {project_id} - Error: {e}")
+            raise HTTPException(400, f"ID de proyecto inválido: {project_id}")
 
         # 1. Obtener todas las historias de usuario del proyecto
+        logging.info("Recuperando historias de usuario de la base de datos...")
         stories_cursor = db.user_stories.find(
             {"project_id": pid}, {"code": 1, "nombre": 1, "descripcion": 1, "_id": 0}
         )
         stories = await stories_cursor.to_list(None)
+        logging.info(f"Se encontraron {len(stories)} historias de usuario.")
 
         if not stories:
+            logging.error(f"El proyecto {project_id} no tiene historias de usuario.")
             raise HTTPException(404, "El proyecto no tiene historias de usuario para generar un backlog.")
 
         # 2. Obtener el grafo de dependencias del proyecto
+        logging.info("Recuperando grafo de dependencias...")
         # Asegúrate de que DependencyGraph aquí sea el modelo de DB, no el de esquema si lo tienes repetido
         dependency_graph_doc = await db.dependencies_graph.find_one(
             {"project_id": pid}
@@ -100,9 +109,12 @@ class ReleaseBacklogService:
             hu_list_str=hu_list_str,
             dependencies_str=dependencies_str
         )
-
+        
+        logging.info("Llamando a la API de Gemini para generar el backlog...")
         # 3. Llamar a Gemini para generar el backlog
         backlog_codes, prompt_t, completion_t, proc_t = await self._ask_gemini(full_prompt)
+        logging.info(f"Gemini respondió exitosamente. Tokens: {prompt_t}/{completion_t}. Tiempo: {proc_t:.2f}ms")
+        logging.info(f"Códigos sugeridos por la IA: {backlog_codes}")
 
         # Validar que Gemini devolvió una lista de códigos válidos
         existing_codes = {s['code'] for s in stories}
@@ -126,11 +138,13 @@ class ReleaseBacklogService:
         }
 
         # Usar replace_one con upsert=True para insertar o actualizar el backlog
+        logging.info(f"Guardando Release Backlog con {len(valid_backlog_codes)} códigos en la base de datos...")
         result = await db.release_backlogs.replace_one(
             {"project_id": pid},
             release_backlog_data_for_db,
             upsert=True
         )
+        logging.info(f"Resultado de guardado en DB: {'Upsertado' if result.upserted_id else 'Actualizado'}")
 
         # 5. Preparar el documento para la respuesta de la API (ReleaseBacklogOut)
         # Aquí 'id' es requerido y 'project_id' debe ser string

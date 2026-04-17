@@ -844,11 +844,15 @@ async def get_project_config(project_id: str):
 @router.put("/project_configs/{project_id}", response_model=ProjectConfigOut, tags=["Project Config"])
 async def update_project_config(project_id: str, config_data: ProjectConfigUpdateIn):
     """Actualizar configuración de un proyecto."""
+    logging.info(f"=== INICIANDO ACTUALIZACIÓN DE CONFIGURACIÓN PARA PROYECTO: {project_id} ===")
     try:
         # Verificar que existe la configuración
+        logging.info("Verificando existencia de la configuración actual...")
         existing_config = await db.project_configs.find_one({"project_id": ObjectId(project_id)})
         if not existing_config:
+            logging.warning(f"Configuración no encontrada para el proyecto: {project_id}")
             raise HTTPException(status_code=404, detail="Configuración no encontrada para este proyecto")
+        logging.info("Configuración existente encontrada.")
 
         # Preparar los datos de actualización
         update_data = config_data.model_dump(exclude_unset=True)
@@ -858,14 +862,18 @@ async def update_project_config(project_id: str, config_data: ProjectConfigUpdat
         update_data["updated_at"] = datetime.utcnow()
 
         # Actualizar
-        await db.project_configs.update_one(
+        logging.info(f"Ejecutando actualización con datos: {update_data}")
+        update_result = await db.project_configs.update_one(
             {"project_id": ObjectId(project_id)},
             {"$set": update_data}
         )
+        logging.info(f"Actualización completada en DB. Documentos modificados: {update_result.modified_count}")
 
         # Obtener la configuración actualizada
+        logging.info("Recuperando configuración actualizada para confirmar cambios...")
         updated_config = await db.project_configs.find_one({"project_id": ObjectId(project_id)})
 
+        logging.info("=== CONFIGURACIÓN ACTUALIZADA EXITOSAMENTE ===")
         return ProjectConfigOut(
             id=str(updated_config["_id"]),
             project_id=str(updated_config["project_id"]),

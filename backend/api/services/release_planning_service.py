@@ -20,7 +20,7 @@ from ...api.schemas.responses import ReleasePlanningOut
 
 # ────────────────────────── Configuración Gemini ──────────────────────────
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = "gemini-2.5-pro"
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
 
 # ───────────────────────────── PROMPT para Gemini ─────────────────────────
 RELEASE_PLANNING_PROMPT = """
@@ -138,10 +138,12 @@ class ReleasePlanningService:
             # 2. Obtener historias de usuario del proyecto
             user_stories = await self._get_project_stories(project_id)
             if not user_stories:
+                logging.error(f"No se encontraron historias de usuario para el proyecto {project_id}")
                 raise HTTPException(
                     status_code=404,
                     detail="No se encontraron historias de usuario para este proyecto."
                 )
+            logging.info(f"Se recuperaron {len(user_stories)} historias de usuario.")
 
             # 3. Preparar datos para la IA
             stories_data = self._format_stories_for_ai(user_stories)
