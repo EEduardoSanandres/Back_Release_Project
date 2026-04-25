@@ -25,6 +25,7 @@ async def pdf_to_stories(
     pdf_url : HttpUrl     | None = None,
     pdf_b64: str          | None = None,
     user_id: str          = None,
+    target_project_id: str | None = None,
     svc: PdfService       = Depends(),
 ):
     """
@@ -46,6 +47,7 @@ async def pdf_to_stories(
         pdf_url=pdf_url,
         pdf_b64=pdf_b64,
         user_id=user_id,
+        target_project_id=target_project_id,
     )
 
 

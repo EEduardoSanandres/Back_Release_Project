@@ -65,11 +65,13 @@ async def startup():
     from ..api.routers.crud import router     as crud_router
     from ..api.routers.extra import router    as extra_router
     from ..api.routers.auth import router     as auth_router
+    from ..api.routers.refinement import router as refinement_router
     
     # Include routers
     app.include_router(main_router, prefix="/api")
     app.include_router(crud_router,  prefix="/api")
     app.include_router(extra_router, prefix="/api")
     app.include_router(auth_router, prefix="/api")
+    app.include_router(refinement_router, prefix="/api")
     
     await init_indexes()

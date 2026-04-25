@@ -52,6 +52,17 @@ async def stories_of_project(project_id: str):
             detail=f"Error retrieving stories: {str(e)}"
         )
 
+@router.get("/projects/{project_id}/epics", response_model=list[str])
+async def get_project_epics(project_id: str):
+    """Obtener lista única de épicas de un proyecto."""
+    try:
+        oid = ObjectId(project_id)
+        epics = await db.user_stories.distinct("epica", {"project_id": oid})
+        # Filtrar valores nulos o vacíos
+        return [e for e in epics if e]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post(
     "/projects/{project_id}/stories/bulk",
     status_code=status.HTTP_201_CREATED,
@@ -122,43 +133,7 @@ async def check_db_status():
             detail=f"Database connection error: {str(e)}"
         )
 
-@router.get("/diagnostic/test-project/{project_id}")
-async def test_project_stories(project_id: str):
-    """Test if a specific project exists and has stories."""
-    try:
-        oid = ObjectId(project_id)
-        
-        # Check if project exists
-        project = await db.projects.find_one({"_id": oid})
-        
-        # Count stories for this project
-        story_count = await db.user_stories.count_documents({"project_id": oid})
-        
-        # Get sample stories
-        sample_stories = await db.user_stories.find({"project_id": oid}).limit(3).to_list(None)
-        
-        # Convert ObjectId to strings for JSON serialization
-        if project:
-            project["_id"] = str(project["_id"])
-            if "owner_id" in project and project["owner_id"]:
-                project["owner_id"] = str(project["owner_id"])
-        
-        for story in sample_stories:
-            story["_id"] = str(story["_id"])
-            story["project_id"] = str(story["project_id"])
-        
-        return {
-            "project_id": project_id,
-            "project_exists": project is not None,
-            "project_data": project,
-            "story_count": story_count,
-            "sample_stories": sample_stories
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error checking project: {str(e)}"
-        )
+
 
 @router.post("/projects/{project_id}/release-backlog/generate", response_model=ReleaseBacklogOut, status_code=status.HTTP_201_CREATED)
 async def generate_project_release_backlog(

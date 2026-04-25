@@ -75,6 +75,7 @@ class PdfService:
         pdf_url:  HttpUrl    | None,
         pdf_b64:  str        | None,
         user_id:  str        | None = None,
+        target_project_id: str | None = None,
     ) -> PdfImportOut:
         """
         Procesa PDFs con especificaciones de proyecto o historias de usuario existentes.
@@ -99,8 +100,11 @@ class PdfService:
         pdf_bytes = await self._read(pdf_file, pdf_url, pdf_b64)
         plain     = self._pdf_to_text(pdf_bytes)
 
-        # 2) Crear proyecto
-        project_id = await self._create_project(self._filename(pdf_file, pdf_url), user_id)
+        # 2) Validar proyecto destino o Crear proyecto nuevo
+        if target_project_id:
+            project_id = ObjectId(target_project_id)
+        else:
+            project_id = await self._create_project(self._filename(pdf_file, pdf_url), user_id)
 
         # 3) Generar historias
         historias: list[PdfStoryOut] = []

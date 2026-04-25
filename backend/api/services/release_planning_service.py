@@ -405,7 +405,7 @@ Criterios: {', '.join(story['criterios'])}
 
         try:
             model = genai.GenerativeModel(MODEL)
-            response = model.generate_content(prompt)
+            response = model.generate_content(prompt, request_options={"timeout": 10000})
 
             # Limpiar la respuesta de bloques de código markdown
             cleaned_response = self._clean_ai_response(response.text.strip())
@@ -668,7 +668,7 @@ Criterios: {', '.join(story['criterios'])}
 
         try:
             model = genai.GenerativeModel(MODEL)
-            response = model.generate_content(regeneration_prompt)
+            response = model.generate_content(regeneration_prompt, request_options={"timeout": 10000})
 
             cleaned_response = self._clean_ai_response(response.text)
 

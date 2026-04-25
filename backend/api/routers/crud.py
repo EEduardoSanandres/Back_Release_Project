@@ -582,8 +582,15 @@ __all__ = ["router"]
 # Endpoint personalizado que REEMPLAZA al GET /user_stories/ del CRUDRouter
 # (Se registra DESPUÉS para tener prioridad sobre el automático)
 @router.get("/user_stories/", tags=["User Stories"])
-async def get_user_stories(projectId: str = None):
-    """Obtener historias de usuario, opcionalmente filtradas por projectId."""
+async def get_user_stories(
+    projectId: str = None, 
+    page: int | None = None, 
+    size: int | None = None, 
+    query: str = None,
+    epica: str = None,
+    status: str = None
+):
+    """Obtener historias de usuario, opcionalmente filtradas por projectId, query y paginadas."""
     try:
         logging.info(f"Endpoint /user_stories/ llamado con projectId: {projectId}")
         
@@ -620,9 +627,36 @@ async def get_user_stories(projectId: str = None):
         else:
             logging.info("No se proporcionó projectId, trayendo todas las historias")
         
+        if query:
+            search_filtro = {"$or": [
+                {"code": {"$regex": query, "$options": "i"}},
+                {"nombre": {"$regex": query, "$options": "i"}},
+                {"title": {"$regex": query, "$options": "i"}},
+                {"descripcion": {"$regex": query, "$options": "i"}},
+            ]}
+            if filtro:
+                filtro = {"$and": [filtro, search_filtro]}
+            else:
+                filtro = search_filtro
+        
+        if epica:
+            filtro["epica"] = epica
+            
+        if status:
+            filtro["status"] = status
+                
         logging.info(f"Ejecutando query con filtro: {filtro}")
-        historias = await db.user_stories.find(filtro).to_list(None)
-        logging.info(f"Encontradas {len(historias)} historias con filtro: {filtro}")
+        
+        # Si hay paginación
+        if page is not None and size is not None:
+            total = await db.user_stories.count_documents(filtro)
+            skip = (page - 1) * size
+            historias = await db.user_stories.find(filtro).skip(skip).limit(size).to_list(None)
+        else:
+            historias = await db.user_stories.find(filtro).to_list(None)
+            total = len(historias)
+            
+        logging.info(f"Encontradas {len(historias)} historias (Total: {total}) con filtro: {filtro}")
         
         result = []
         for h in historias:
@@ -644,6 +678,16 @@ async def get_user_stories(projectId: str = None):
             })
         
         logging.info(f"Retornando {len(result)} historias")
+        
+        if page is not None and size is not None:
+            return {
+                "items": result,
+                "total": total,
+                "page": page,
+                "size": size,
+                "pages": (total + size - 1) // size
+            }
+        
         return result
         
     except HTTPException:
@@ -683,8 +727,15 @@ async def get_user_stories_product_backlog(product_id: str = None):
 
 # Nuevo endpoint para filtrar US por proyecto
 @router.get("/user_stories/by-project/{projectId}", tags=["User Stories"])
-async def get_user_stories_by_project(projectId: str):
-    """Obtener historias de usuario filtradas por projectId."""
+async def get_user_stories_by_project(
+    projectId: str, 
+    page: int | None = None, 
+    size: int | None = None, 
+    query: str = None,
+    epica: str = None,
+    status: str = None
+):
+    """Obtener historias de usuario filtradas por projectId, query y opcionalmente paginadas."""
     try:
         logging.info(f"Endpoint /user_stories/by-project/{{projectId}} llamado con projectId: {projectId}")
         
@@ -714,9 +765,35 @@ async def get_user_stories_by_project(projectId: str):
             # En caso de error, no filtrar
             filtro = {}
         
+        if query:
+            search_filtro = {"$or": [
+                {"code": {"$regex": query, "$options": "i"}},
+                {"nombre": {"$regex": query, "$options": "i"}},
+                {"title": {"$regex": query, "$options": "i"}},
+                {"descripcion": {"$regex": query, "$options": "i"}},
+            ]}
+            if filtro:
+                filtro = {"$and": [filtro, search_filtro]}
+            else:
+                filtro = search_filtro
+        
+        if epica:
+            filtro["epica"] = epica
+            
+        if status:
+            filtro["status"] = status
+        
         logging.info(f"Ejecutando query con filtro: {filtro}")
-        historias = await db.user_stories.find(filtro).to_list(None)
-        logging.info(f"Encontradas {len(historias)} historias con filtro: {filtro}")
+        
+        if page is not None and size is not None:
+            total = await db.user_stories.count_documents(filtro)
+            skip = (page - 1) * size
+            historias = await db.user_stories.find(filtro).skip(skip).limit(size).to_list(None)
+        else:
+            historias = await db.user_stories.find(filtro).to_list(None)
+            total = len(historias)
+            
+        logging.info(f"Encontradas {len(historias)} historias (Total: {total}) con filtro: {filtro}")
         
         result = []
         for h in historias:
@@ -738,6 +815,16 @@ async def get_user_stories_by_project(projectId: str):
             })
         
         logging.info(f"Retornando {len(result)} historias")
+        
+        if page is not None and size is not None:
+            return {
+                "items": result,
+                "total": total,
+                "page": page,
+                "size": size,
+                "pages": (total + size - 1) // size
+            }
+            
         return result
         
     except HTTPException:
