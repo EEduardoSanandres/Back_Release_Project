@@ -51,6 +51,7 @@ class ReleasePlanningOut(BaseModel):
     total_prompt_tokens: int
     total_completion_tokens: int
     total_processing_time_ms: float
+    suggested_config: dict | None = None
 
 class ProjectConfigOut(BaseModel):
     id: str

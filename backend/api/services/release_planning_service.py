@@ -44,8 +44,9 @@ INSTRUCCIONES IMPORTANTES:
 2. **DISTRIBUCIÓN**: Distribuye los sprints equitativamente entre los {num_releases} releases. Cada release agrupa varios sprints consecutivos.
 3. **DEPENDENCIAS**: Las historias con dependencias deben programarse ANTES que las que dependen de ellas.
 4. **ORDENAMIENTO**: Si historia A tiene "Dependencias: 2", significa que 2 historias dependen de A, por lo que A debe ir en un sprint anterior.
-5. **INCLUIR TODAS**: Debes incluir las {len_stories} historias exactamente una vez cada una.
+5. **INCLUIR TODAS**: Debes incluir las {len_stories} historias exactamente una vez cada una sin excepción.
 6. **FECHAS REALISTAS**: El primer sprint comienza el {sprint_start_date} y termina el {sprint_end_date}.
+7. **OPTIMIZACIÓN**: Evalúa la configuración actual. Si el plan es viable y está bien balanceado, devuelve `suggested_config` como `null`. Solo sugiere cambios en `suggested_config` si hay una mejora SIGNIFICATIVA necesaria (ej: la fecha objetivo es inalcanzable o hay más de 4 semanas de holgura innecesaria).
 
 FORMATO JSON REQUERIDO:
 {{
@@ -103,7 +104,14 @@ FORMATO JSON REQUERIDO:
   ],
   "overall_recommendations": [
     "Recomendación general del proyecto"
-  ]
+  ],
+  "suggested_config": {{
+    "num_devs": {num_devs},
+    "team_velocity": {team_velocity},
+    "sprint_duration": {sprint_duration},
+    "release_target_date": "YYYY-MM-DD",
+    "reasoning": "Breve explicación de por qué se sugieren estos cambios para optimizar la entrega"
+  }}
 }}
 
 DATOS DE LAS HISTORIAS:
@@ -225,6 +233,7 @@ class ReleasePlanningService:
                 "project_analysis": release_plan.get("project_analysis", {}),
                 "overall_risks": release_plan.get("overall_risks", []),
                 "overall_recommendations": release_plan.get("overall_recommendations", []),
+                "suggested_config": release_plan.get("suggested_config"),
                 "generated_at": datetime.utcnow(),
                 "total_prompt_tokens": release_plan.get("usage", {}).get("prompt_tokens", 0),
                 "total_completion_tokens": release_plan.get("usage", {}).get("completion_tokens", 0),
@@ -247,7 +256,8 @@ class ReleasePlanningService:
                 generated_at=plan_doc["generated_at"],
                 total_prompt_tokens=plan_doc["total_prompt_tokens"],
                 total_completion_tokens=plan_doc["total_completion_tokens"],
-                total_processing_time_ms=plan_doc["total_processing_time_ms"]
+                total_processing_time_ms=plan_doc["total_processing_time_ms"],
+                suggested_config=plan_doc.get("suggested_config")
             )
 
         except Exception as e:
@@ -279,7 +289,8 @@ class ReleasePlanningService:
             generated_at=plan["generated_at"],
             total_prompt_tokens=plan.get("total_prompt_tokens", 0),
             total_completion_tokens=plan.get("total_completion_tokens", 0),
-            total_processing_time_ms=plan.get("total_processing_time_ms", 0)
+            total_processing_time_ms=plan.get("total_processing_time_ms", 0),
+            suggested_config=plan.get("suggested_config")
         )
 
     async def _get_project_config(self, project_id: str) -> Dict[str, Any]:
