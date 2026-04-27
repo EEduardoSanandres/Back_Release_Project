@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import date
+from datetime import date, datetime
 from typing import Literal, List
 from pydantic import BaseModel, HttpUrl, Field, EmailStr
 
@@ -33,7 +33,7 @@ class ProjectConfigCreateIn(BaseModel):
     team_velocity: int = Field(..., description="Velocidad del equipo (story points por sprint)")
     sprint_duration: int = Field(..., description="Duración del sprint en semanas")
     prioritization_metric: str = Field(..., description="Métrica de priorización (ej: businessValue, storyPoints)")
-    release_target_date: date = Field(..., description="Fecha objetivo de release")
+    release_target_date: datetime = Field(..., description="Fecha objetivo de release")
     team_capacity: int | None = Field(None, description="Capacidad del equipo en horas por sprint")
     # Escenarios de estimación
     optimistic_scenario: int | None = Field(None, description="Escenario optimista (porcentaje)")
@@ -45,7 +45,7 @@ class ProjectConfigUpdateIn(BaseModel):
     team_velocity: int | None = Field(None, description="Velocidad del equipo (story points por sprint)")
     sprint_duration: int | None = Field(None, description="Duración del sprint en semanas")
     prioritization_metric: str | None = Field(None, description="Métrica de priorización (ej: businessValue, storyPoints)")
-    release_target_date: date | None = Field(None, description="Fecha objetivo de release")
+    release_target_date: datetime | None = Field(None, description="Fecha objetivo de release")
     team_capacity: int | None = Field(None, description="Capacidad del equipo en horas por sprint")
     # Escenarios de estimación
     optimistic_scenario: int | None = Field(None, description="Escenario optimista (porcentaje)")
