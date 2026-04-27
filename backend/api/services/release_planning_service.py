@@ -46,7 +46,8 @@ INSTRUCCIONES IMPORTANTES:
 4. **ORDENAMIENTO**: Si historia A tiene "Dependencias: 2", significa que 2 historias dependen de A, por lo que A debe ir en un sprint anterior.
 5. **INCLUIR TODAS**: Debes incluir las {len_stories} historias exactamente una vez cada una sin excepción.
 6. **FECHAS REALISTAS**: El primer sprint comienza el {sprint_start_date} y termina el {sprint_end_date}.
-7. **OPTIMIZACIÓN**: Evalúa la configuración actual. Si el plan es viable y está bien balanceado, devuelve `suggested_config` como `null`. Solo sugiere cambios en `suggested_config` si hay una mejora SIGNIFICATIVA necesaria (ej: la fecha objetivo es inalcanzable o hay más de 4 semanas de holgura innecesaria).
+   IMPORTANTE: Si `target_date_feasible` es `false` o el plan NO es viable, DEBES OBLIGATORIAMENTE proporcionar una `suggested_config` con valores que SÍ hagan el proyecto viable (ej: una nueva `release_target_date` realista o más desarrolladores). 
+   Si la `release_target_date` actual es en el pasado o demasiado cercana, sugiere una fecha futura realista basada en la duración estimada.
 
 FORMATO JSON REQUERIDO:
 {{
