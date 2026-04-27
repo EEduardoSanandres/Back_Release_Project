@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..services.auth_service import AuthService, auth_service
 from ..schemas.requests import UserCreateIn
@@ -7,15 +7,15 @@ from ...app.schemas import User
 
 router = APIRouter(
     prefix="/auth",
-    tags=["Authentication"]
+    tags=["Auth"]
 )
 
 class UserResponse(BaseModel):
-    id: str
-    email: str
-    name: str
-    role: str
-    created_at: str
+    id: str = Field(..., description="ID del usuario")
+    email: str = Field(..., description="Email del usuario")
+    name: str = Field(..., description="Nombre del usuario")
+    role: str = Field(..., description="Rol del usuario")
+    created_at: str = Field(..., description="Fecha de creación en formato ISO")
     
     @classmethod
     def from_user(cls, user: User) -> "UserResponse":
@@ -28,14 +28,24 @@ class UserResponse(BaseModel):
         )
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(..., description="Email del usuario", example="user@example.com")
+    password: str = Field(..., description="Contraseña del usuario", example="Password123")
 
 class LoginResponse(BaseModel):
-    message: str
-    user: UserResponse
+    message: str = Field(..., description="Mensaje de éxito", example="Login exitoso")
+    user: UserResponse = Field(..., description="Datos del usuario autenticado")
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register", 
+    response_model=UserResponse, 
+    status_code=status.HTTP_201_CREATED,
+    summary="Registrar un nuevo usuario",
+    description="Crea una nueva cuenta de usuario en el sistema. Valida que el email no esté en uso y hashea la contraseña.",
+    responses={
+        400: {"description": "Datos de registro inválidos o email ya registrado"},
+        500: {"description": "Error interno del servidor al crear el usuario"}
+    }
+)
 async def register_user(
     user_data: UserCreateIn,
     auth_svc: AuthService = Depends(auth_service)
@@ -68,7 +78,15 @@ async def register_user(
             detail=f"Error: {type(e).__name__}: {str(e)}"
         )
 
-@router.post("/login", response_model=LoginResponse)
+@router.post(
+    "/login", 
+    response_model=LoginResponse,
+    summary="Iniciar sesión",
+    description="Autentica a un usuario mediante email y contraseña. Retorna los datos del usuario si las credenciales son válidas.",
+    responses={
+        401: {"description": "Credenciales inválidas (email o contraseña incorrectos)"}
+    }
+)
 async def login_user(
     login_data: LoginRequest,
     auth_svc: AuthService = Depends(auth_service)

@@ -5,40 +5,40 @@ from pydantic import Field, EmailStr, BaseModel
 from fastapi_crudrouter_mongodb import MongoModel, MongoObjectId
 
 class User(MongoModel):
-    id: Annotated[ObjectId, MongoObjectId] | None = Field(default=None, alias="_id")
-    email: EmailStr
-    name: str
-    password_hash: str = Field(..., description="Hashed password")
-    role: Literal["student", "advisor", "po", "admin"]
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    id: Annotated[ObjectId, MongoObjectId] | None = Field(default=None, alias="_id", description="ID único del usuario")
+    email: EmailStr = Field(..., description="Correo electrónico del usuario", example="user@example.com")
+    name: str = Field(..., description="Nombre completo del usuario", example="Juan Pérez")
+    password_hash: str = Field(..., description="Contraseña hasheada (bcrypt)")
+    role: Literal["student", "advisor", "po", "admin"] = Field(..., description="Rol asignado al usuario")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Fecha de creación de la cuenta")
 
 class Project(MongoModel):
-    id: Annotated[ObjectId, MongoObjectId] | None = Field(default=None, alias="_id")
-    code: str
-    name: str
-    description: Optional[str] = None
-    owner_id: Annotated[ObjectId, MongoObjectId] | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    total_prompt_tokens: int = Field(default=0)
-    total_completion_tokens: int = Field(default=0)
-    total_processing_time_ms: float = Field(default=0.0)
+    id: Annotated[ObjectId, MongoObjectId] | None = Field(default=None, alias="_id", description="ID único del proyecto")
+    code: str = Field(..., description="Código corto del proyecto", example="SM-2024")
+    name: str = Field(..., description="Nombre del proyecto", example="SprintMind Backend")
+    description: Optional[str] = Field(None, description="Descripción detallada del proyecto")
+    owner_id: Annotated[ObjectId, MongoObjectId] | None = Field(None, description="ID del usuario dueño del proyecto")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Fecha de creación del proyecto")
+    total_prompt_tokens: int = Field(default=0, description="Total de tokens de prompt usados por la IA")
+    total_completion_tokens: int = Field(default=0, description="Total de tokens de completitud generados por la IA")
+    total_processing_time_ms: float = Field(default=0.0, description="Tiempo total de procesamiento de IA en milisegundos")
 
 class UserStory(MongoModel):
-    id: Annotated[ObjectId, MongoObjectId] | None = Field(default=None, alias="_id")
-    project_id: Annotated[ObjectId, MongoObjectId]
-    code: str
-    epica: str
-    nombre: str
-    descripcion: str
-    criterios: List[str]
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    id: Annotated[ObjectId, MongoObjectId] | None = Field(default=None, alias="_id", description="ID único de la historia de usuario")
+    project_id: Annotated[ObjectId, MongoObjectId] = Field(..., description="ID del proyecto al que pertenece la HU")
+    code: str = Field(..., description="Código identificador (ej: US-01)", example="US-01")
+    epica: str = Field(..., description="Nombre de la épica relacionada", example="Autenticación")
+    nombre: str = Field(..., description="Título de la historia", example="Login de usuario")
+    descripcion: str = Field(..., description="Descripción detallada (Como [rol] quiero [acción] para [beneficio])")
+    criterios: List[str] = Field(..., description="Lista de criterios de aceptación")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Fecha de creación de la HU")
     # Campos adicionales para Product Backlog
-    priority: str = Field(default="Medium")
-    story_points: int = Field(default=0)
-    dor: int = Field(default=0)
-    status: str = Field(default="Ready")
-    deps: int = Field(default=0)
-    ai: bool = Field(default=False)
+    priority: str = Field(default="Medium", description="Prioridad de la historia (Low, Medium, High, Must Have, etc.)", example="High")
+    story_points: int = Field(default=0, description="Puntos de historia estimados", example=5)
+    dor: int = Field(default=0, description="Definition of Ready (0-100%)", example=85)
+    status: str = Field(default="Ready", description="Estado actual de la historia", example="Backlog")
+    deps: int = Field(default=0, description="Número de dependencias activas")
+    ai: bool = Field(default=False, description="Indica si fue generada o analizada por IA")
 
 class DependencyPair(BaseModel):
     frm: str

@@ -15,11 +15,16 @@ from ..schemas.responses import PdfImportOut
 # --------------------------------------------------------------------------- #
 
 router = APIRouter(
-    prefix="/pdf",          # 👉  /api/pdf/to-userstories
-    tags=["pdf"],
+    prefix="/pdf",
+    tags=["AI Analysis"],
 )
 
-@router.post("/to-userstories", response_model=PdfImportOut)
+@router.post(
+    "/to-userstories", 
+    response_model=PdfImportOut,
+    summary="PDF a Historias de Usuario",
+    description="Procesa un archivo PDF (vía archivo, URL o base64) para extraer o generar historias de usuario usando IA."
+)
 async def pdf_to_stories(
     pdf_file: UploadFile | None = File(default=None),
     pdf_url : HttpUrl     | None = None,

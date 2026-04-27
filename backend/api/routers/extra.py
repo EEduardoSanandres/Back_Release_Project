@@ -10,17 +10,27 @@ from ..services.release_backlog_service import ReleaseBacklogService
 from ..services.release_planning_service import ReleasePlanningService
 from ..schemas.responses import ReleaseBacklogOut, ReleasePlanningOut
 
-router = APIRouter(tags=["Extra utils"])
+router = APIRouter()
 
 # ─────────────────────────────── USERS ────────────────────────────────
-@router.get("/users/by-email/{email}", response_model=User)
+@router.get(
+    "/users/by-email/{email}", 
+    response_model=User, 
+    tags=["Users"],
+    summary="Buscar usuario por email"
+)
 async def get_user_by_email(email: str):
     doc = await db.users.find_one({"email": email})
     if not doc:
         raise HTTPException(404, "User not found")
     return doc
 
-@router.get("/users/by-role/{role}", response_model=list[User])
+@router.get(
+    "/users/by-role/{role}", 
+    response_model=list[User], 
+    tags=["Users"],
+    summary="Listar usuarios por rol"
+)
 async def list_users_by_role(role: str):
     if role not in {"student", "advisor", "po", "admin"}:
         raise HTTPException(400, "Invalid role")
@@ -84,8 +94,14 @@ async def bulk_insert_stories(
     await db.user_stories.insert_many(docs)
     return docs
 
-# ─────────────────────── DEPENDENCY GRAPH (nuevo) ──────────────────────
-@router.get("/projects/{project_id}/dependency-graph", response_model=DependencyGraph)
+# ─────────────────────── DEPENDENCY GRAPH ──────────────────────
+@router.get(
+    "/projects/{project_id}/dependency-graph", 
+    response_model=DependencyGraph,
+    tags=["Dependencies"],
+    summary="Obtener grafo de dependencias",
+    description="Retorna el grafo de dependencias calculado para un proyecto."
+)
 async def get_dependency_graph(project_id: str):
     pid  = ObjectId(project_id)
     doc = await db.dependencies_graph.find_one({"project_id": pid})
@@ -97,6 +113,9 @@ async def get_dependency_graph(project_id: str):
     "/projects/{project_id}/dependency-graph/generate",
     response_model=DependencyGraph,
     status_code=status.HTTP_201_CREATED,
+    tags=["Dependencies"],
+    summary="Generar grafo de dependencias",
+    description="Analiza todas las historias de usuario del proyecto y usa IA para detectar dependencias técnicas y funcionales."
 )
 async def generate_dependency_graph(project_id: str):
     svc = DependencyService()
@@ -135,7 +154,14 @@ async def check_db_status():
 
 
 
-@router.post("/projects/{project_id}/release-backlog/generate", response_model=ReleaseBacklogOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/projects/{project_id}/release-backlog/generate", 
+    response_model=ReleaseBacklogOut, 
+    status_code=status.HTTP_201_CREATED,
+    tags=["AI Analysis"],
+    summary="Generar Release Backlog",
+    description="Ordena el backlog del proyecto de forma óptima para el release usando IA."
+)
 async def generate_project_release_backlog(
     project_id: str,
     service: ReleaseBacklogService = Depends()
@@ -153,7 +179,12 @@ async def generate_project_release_backlog(
             raise e
         raise HTTPException(status_code=500, detail=f"Error interno al generar release backlog: {str(e)}")
 
-@router.get("/projects/{project_id}/release-backlog", response_model=ReleaseBacklogOut)
+@router.get(
+    "/projects/{project_id}/release-backlog", 
+    response_model=ReleaseBacklogOut,
+    tags=["AI Analysis"],
+    summary="Obtener Release Backlog"
+)
 async def get_project_release_backlog(
     project_id: str,
     service: ReleaseBacklogService = Depends()
@@ -163,7 +194,13 @@ async def get_project_release_backlog(
     """
     return await service.get_backlog(project_id)
 
-@router.post("/projects/{project_id}/release-planning/generate", response_model=ReleasePlanningOut)
+@router.post(
+    "/projects/{project_id}/release-planning/generate", 
+    response_model=ReleasePlanningOut,
+    tags=["AI Analysis"],
+    summary="Generar Plan de Release",
+    description="Crea una planificación detallada de releases y sprints basada en la velocidad del equipo y prioridad de las historias."
+)
 async def generate_release_planning(
     project_id: str,
     num_releases: int = 1,
@@ -187,7 +224,12 @@ async def generate_release_planning(
             raise e
         raise HTTPException(status_code=500, detail=f"Error interno al generar release planning: {str(e)}")
 
-@router.get("/projects/{project_id}/release-planning", response_model=ReleasePlanningOut)
+@router.get(
+    "/projects/{project_id}/release-planning", 
+    response_model=ReleasePlanningOut,
+    tags=["AI Analysis"],
+    summary="Obtener Plan de Release"
+)
 async def get_release_planning(
     project_id: str,
     service: ReleasePlanningService = Depends()

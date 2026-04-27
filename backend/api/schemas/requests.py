@@ -5,25 +5,26 @@ from pydantic import BaseModel, HttpUrl, Field, EmailStr
 
 # ---------- User ----------
 class UserCreateIn(BaseModel):
-    email: EmailStr
-    name: str
+    email: EmailStr = Field(..., description="Correo electrónico del nuevo usuario", example="nuevo.usuario@example.com")
+    name: str = Field(..., description="Nombre completo del nuevo usuario", example="Andrés Manuel")
     password: str = Field(
         ..., 
         min_length=6, 
         max_length=72,
-        description="Password must be between 6 and 72 characters (bcrypt limit)"
+        description="Contraseña (mínimo 6 caracteres, máximo 72 debido al límite de bcrypt)",
+        example="Password123!"
     )
-    role: Literal["student", "advisor", "po", "admin"]
+    role: Literal["student", "advisor", "po", "admin"] = Field(..., description="Rol del usuario en el sistema", example="student")
 
 # ---------- Chat ----------
 class ChatIn(BaseModel):
-    message: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, description="Mensaje a enviar a la IA", example="¿Cómo puedo priorizar mis historias de usuario?")
 
 # ---------- PDF ----------
 class PdfIn(BaseModel):
-    pdf_url: HttpUrl | None = None
-    pdf_b64: str  | None = None
-    user_id: str = Field(..., description="ID del usuario que sube el PDF")
+    pdf_url: HttpUrl | None = Field(None, description="URL pública del archivo PDF a procesar")
+    pdf_b64: str  | None = Field(None, description="Archivo PDF codificado en Base64")
+    user_id: str = Field(..., description="ID del usuario que sube el PDF para asignarlo como dueño del proyecto", example="65e123abc...")
 
 # ---------- Project Config ----------
 class ProjectConfigCreateIn(BaseModel):

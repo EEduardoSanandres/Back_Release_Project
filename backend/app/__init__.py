@@ -22,16 +22,64 @@ async def init_indexes():
             await db[coll].create_index(list(keys.items()), **opts)
     logging.info("✔ MongoDB indexes ready")
 
+# ── Tags Metadata ──────────────────────────────
+tags_metadata = [
+    {
+        "name": "Auth",
+        "description": "Operaciones de autenticación, login y registro de usuarios.",
+    },
+    {
+        "name": "Users",
+        "description": "Gestión de perfiles de usuario y visualización de miembros del equipo.",
+    },
+    {
+        "name": "Projects",
+        "description": "CRUD de proyectos y obtención de estadísticas y eventos de calendario.",
+    },
+    {
+        "name": "User Stories",
+        "description": "Gestión del Product Backlog, historias de usuario y sus criterios de aceptación.",
+    },
+    {
+        "name": "Refinement",
+        "description": "Herramientas de refinamiento de historias de usuario (DoR, INVEST).",
+    },
+    {
+        "name": "AI Analysis",
+        "description": "Procesamiento de requerimientos mediante IA (PDF, Release Planning, Backlog).",
+    },
+    {
+        "name": "Dependencies",
+        "description": "Gestión y visualización del grafo de dependencias entre historias.",
+    },
+]
+
 # ── FastAPI ────────────────────────────────────
 # Configure for Cloud Run - trust proxy headers
 app = FastAPI(
+    title="SprintMind API",
+    description="""
+API para la gestión de proyectos ágiles con soporte de IA. 
+
+Permite:
+* **Importar requerimientos** desde archivos PDF.
+* **Gestionar el Product Backlog** con análisis de prioridades y dependencias.
+* **Planificar Releases** automáticamente basándose en la capacidad del equipo.
+* **Refinar historias de usuario** asegurando que cumplan con criterios DoR e INVEST.
+    """,
+    version="1.0.0",
+    contact={
+        "name": "Soporte SprintMind",
+        "url": "https://sprintmind.app/support",
+    },
+    openapi_tags=tags_metadata,
     docs_url="/docs", 
     redoc_url=None,
     root_path="",
     # Trust forwarded headers from Cloud Run
     servers=[
         {"url": "https://back-release-project-142164661472.southamerica-west1.run.app", "description": "Production"},
-        {"url": "http://localhost:8080", "description": "Local"}
+        {"url": "http://localhost:8000", "description": "Local"}
     ]
 )
 

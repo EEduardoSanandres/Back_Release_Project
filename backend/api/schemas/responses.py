@@ -1,7 +1,7 @@
 # backend/api/schemas/responses.py
 from datetime import date, datetime
 from typing import List, Literal
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 class PdfStoryOut(BaseModel):
     epic: str
@@ -24,11 +24,11 @@ class PdfImportOut(BaseModel):
 
 class UserOut(BaseModel):
     """Respuesta de usuario sin datos sensibles como la contraseña."""
-    id: str
-    email: EmailStr
-    name: str
-    role: Literal["student", "advisor", "po", "admin"]
-    created_at: datetime
+    id: str = Field(..., description="ID único del usuario", example="65e123abc...")
+    email: EmailStr = Field(..., description="Correo electrónico", example="usuario@example.com")
+    name: str = Field(..., description="Nombre completo", example="Juan Pérez")
+    role: Literal["student", "advisor", "po", "admin"] = Field(..., description="Rol del usuario")
+    created_at: datetime = Field(..., description="Fecha de creación del registro")
 
 class ReleaseBacklogOut(BaseModel):
     id: str
@@ -69,24 +69,24 @@ class ProjectConfigOut(BaseModel):
     updated_at: datetime
 
 class DashboardStatsOut(BaseModel):
-    total_projects: int
-    projects_growth: str
-    total_active_stories: int
-    pending_refinement: int
-    planned_releases: int
-    next_release_date: str | None 
-    ai_analysis_count: int
-    ai_analysis_period: str
+    total_projects: int = Field(..., description="Número total de proyectos en el sistema", example=12)
+    projects_growth: str = Field(..., description="Texto descriptivo del crecimiento mensual", example="+2 este mes")
+    total_active_stories: int = Field(..., description="Total de historias que no están en estado 'Done'", example=45)
+    pending_refinement: int = Field(..., description="Historias con DoR < 80%", example=8)
+    planned_releases: int = Field(..., description="Número de releases planificados", example=3)
+    next_release_date: str | None = Field(None, description="Fecha del próximo release (YYYY-MM-DD)", example="2024-06-15")
+    ai_analysis_count: int = Field(..., description="Número de análisis realizados por la IA recientemente", example=150)
+    ai_analysis_period: str = Field(..., description="Periodo de tiempo del conteo de IA", example="Esta semana")
 
 class ProjectStatsOut(BaseModel):
-    total_stories: int
-    in_development: int
-    completed: int
-    pending: int
-    releases_count: int
-    total_story_points: int
-    completed_story_points: int
-    progress_percentage: float
+    total_stories: int = Field(..., description="Total de historias de usuario del proyecto", example=20)
+    in_development: int = Field(..., description="Historias en desarrollo", example=5)
+    completed: int = Field(..., description="Historias completadas", example=10)
+    pending: int = Field(..., description="Historias pendientes", example=5)
+    releases_count: int = Field(..., description="Número de releases planificados", example=2)
+    total_story_points: int = Field(..., description="Story points totales del proyecto", example=100)
+    completed_story_points: int = Field(..., description="Story points completados", example=60)
+    progress_percentage: float = Field(..., description="Porcentaje de avance basado en story points", example=60.0)
 
 class CalendarEventOut(BaseModel):
     id: str

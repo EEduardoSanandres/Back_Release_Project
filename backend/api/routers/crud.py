@@ -23,7 +23,13 @@ router = APIRouter()
 # Custom User router con manejo de contraseñas
 user_router = APIRouter(prefix="/users", tags=["Users"])
 
-@user_router.post("/", response_model=UserOut, status_code=201)
+@user_router.post(
+    "/", 
+    response_model=UserOut, 
+    status_code=201,
+    summary="Crear usuario",
+    description="Endpoint administrativo para crear usuarios directamente en la base de datos."
+)
 async def create_user(
     user_data: UserCreateIn,
     auth_svc: AuthService = Depends(auth_service)
@@ -38,7 +44,12 @@ async def create_user(
         created_at=user.created_at if user.created_at else datetime.utcnow()
     )
 
-@user_router.get("/", response_model=List[UserOut])
+@user_router.get(
+    "/", 
+    response_model=List[UserOut],
+    summary="Listar usuarios",
+    description="Obtiene una lista de todos los usuarios registrados sin incluir datos sensibles."
+)
 async def get_users():
     """Obtener todos los usuarios sin datos sensibles."""
     users = await db.users.find().to_list(None)
@@ -75,7 +86,13 @@ router.include_router(user_router)
 
 # ── Endpoint para Dashboard Stats (ANTES del CRUDRouter para evitar conflictos) ──────────────
 
-@router.get("/projects/dashboard-stats", response_model=DashboardStatsOut, tags=["Projects"])
+@router.get(
+    "/projects/dashboard-stats", 
+    response_model=DashboardStatsOut, 
+    tags=["Projects"],
+    summary="Estadísticas globales del Dashboard",
+    description="Calcula métricas clave para el dashboard principal, incluyendo crecimiento de proyectos, historias activas y actividad de IA."
+)
 async def get_dashboard_stats(user_id: str = None):
     """
     Obtener estadísticas del dashboard para un usuario (o todos si no se especifica).
@@ -215,7 +232,13 @@ async def get_dashboard_stats(user_id: str = None):
 
 # ── Endpoint para Stats de Proyecto Individual (ANTES del CRUDRouter) ──────────────
 
-@router.get("/projects/{project_id}/stats", response_model=ProjectStatsOut, tags=["Projects"])
+@router.get(
+    "/projects/{project_id}/stats", 
+    response_model=ProjectStatsOut, 
+    tags=["Projects"],
+    summary="Estadísticas de un proyecto",
+    description="Retorna el detalle del progreso de un proyecto específico, basándose en el estado de sus historias de usuario y story points."
+)
 async def get_project_stats(project_id: str):
     """
     Obtener estadísticas de un proyecto específico.
@@ -297,7 +320,13 @@ async def get_project_stats(project_id: str):
 
 # ── Endpoint para Eventos del Calendario (ANTES del CRUDRouter) ──────────────
 
-@router.get("/projects/{project_id}/calendar-events", response_model=CalendarEventsOut, tags=["Projects"])
+@router.get(
+    "/projects/{project_id}/calendar-events", 
+    response_model=CalendarEventsOut, 
+    tags=["Projects"],
+    summary="Eventos de calendario del proyecto",
+    description="Genera dinámicamente eventos (releases, sprints, standups) para ser visualizados en una vista de calendario."
+)
 async def get_project_calendar_events(project_id: str, month: int = None, year: int = None):
     """
     Obtener eventos de calendario para un proyecto.
@@ -581,7 +610,12 @@ __all__ = ["router"]
 
 # Endpoint personalizado que REEMPLAZA al GET /user_stories/ del CRUDRouter
 # (Se registra DESPUÉS para tener prioridad sobre el automático)
-@router.get("/user_stories/", tags=["User Stories"])
+@router.get(
+    "/user_stories/", 
+    tags=["User Stories"],
+    summary="Listar historias de usuario (Filtrado)",
+    description="Obtiene historias de usuario con soporte para filtros por proyecto, épica, estado y búsqueda de texto. Soporta paginación."
+)
 async def get_user_stories(
     projectId: str = None, 
     page: int | None = None, 
